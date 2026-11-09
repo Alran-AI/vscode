@@ -1,0 +1,1008 @@
+{
+  "name": "alran-vscode",
+  "displayName": "Alran Code",
+  "description": "Alran Code, the AI coding agent by Ottili, inside VS Code and compatible editors. Runs the real Alran Code harness over the Agent Client Protocol.",
+  "version": "0.1.0",
+  "publisher": "ottili",
+  "license": "MIT",
+  "private": true,
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1b2a4a",
+    "theme": "dark"
+  },
+  "homepage": "https://api.ottili.one",
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "alran",
+    "ottili",
+    "ai",
+    "agent",
+    "acp",
+    "coding agent",
+    "mcp"
+  ],
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=20"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Alran runs an agent that can read files and execute commands."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Alran needs a local file system."
+    }
+  },
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "alran",
+          "title": "Alran Code",
+          "icon": "media/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "alran": [
+        {
+          "type": "webview",
+          "id": "alran.chat",
+          "name": "Chat",
+          "icon": "media/activitybar.svg",
+          "contextualTitle": "Alran Code"
+        },
+        {
+          "id": "alran.sessions",
+          "name": "Sessions",
+          "visibility": "collapsed",
+          "icon": "media/activitybar.svg"
+        },
+        {
+          "id": "alran.changes",
+          "name": "Changes",
+          "visibility": "collapsed",
+          "icon": "media/activitybar.svg"
+        },
+        {
+          "id": "alran.agents",
+          "name": "Agents",
+          "visibility": "collapsed",
+          "icon": "media/activitybar.svg"
+        },
+        {
+          "id": "alran.capabilities",
+          "name": "Capabilities",
+          "visibility": "collapsed",
+          "icon": "media/activitybar.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "alran.sessions",
+        "contents": "Previous sessions appear here once the agent is connected.\n[Open Chat](command:alran.openChat)"
+      },
+      {
+        "view": "alran.changes",
+        "contents": "Files this session changes appear here."
+      },
+      {
+        "view": "alran.agents",
+        "contents": "Sub-agents started by this session appear here."
+      }
+    ],
+    "commands": [
+      {
+        "command": "alran.openChat",
+        "title": "Open Chat",
+        "category": "Alran",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "alran.openInEditor",
+        "title": "Open Chat in Editor",
+        "category": "Alran",
+        "icon": "$(empty-window)"
+      },
+      {
+        "command": "alran.newSession",
+        "title": "New Session",
+        "category": "Alran",
+        "icon": "$(add)"
+      },
+      {
+        "command": "alran.resumeSession",
+        "title": "Resume Session…",
+        "category": "Alran",
+        "icon": "$(history)"
+      },
+      {
+        "command": "alran.openSession",
+        "title": "Open Session",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.forkSession",
+        "title": "Fork Session",
+        "category": "Alran",
+        "icon": "$(repo-forked)"
+      },
+      {
+        "command": "alran.closeSession",
+        "title": "Close Session Tab",
+        "category": "Alran",
+        "icon": "$(close)"
+      },
+      {
+        "command": "alran.refreshSessions",
+        "title": "Refresh Sessions",
+        "category": "Alran",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "alran.sideQuestion",
+        "title": "Ask a Side Question (/btw)…",
+        "category": "Alran",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "alran.cancel",
+        "title": "Stop Running Turn",
+        "category": "Alran",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "alran.retry",
+        "title": "Retry Last Message",
+        "category": "Alran",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "alran.compact",
+        "title": "Compact Conversation",
+        "category": "Alran",
+        "icon": "$(fold)"
+      },
+      {
+        "command": "alran.exportSession",
+        "title": "Export Session as Markdown…",
+        "category": "Alran",
+        "icon": "$(export)"
+      },
+      {
+        "command": "alran.showTranscript",
+        "title": "Open Transcript",
+        "category": "Alran",
+        "icon": "$(book)"
+      },
+      {
+        "command": "alran.copyLastResponse",
+        "title": "Copy Last Response",
+        "category": "Alran",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "alran.pickModel",
+        "title": "Choose Model…",
+        "category": "Alran",
+        "icon": "$(hubot)"
+      },
+      {
+        "command": "alran.pickEffort",
+        "title": "Choose Thinking Effort…",
+        "category": "Alran",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "alran.pickPermissionMode",
+        "title": "Choose Permission Mode…",
+        "category": "Alran",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "alran.togglePlanMode",
+        "title": "Toggle Plan Mode",
+        "category": "Alran",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "alran.viewPlan",
+        "title": "View Latest Plan",
+        "category": "Alran",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "alran.goalStart",
+        "title": "Start Goal…",
+        "category": "Alran",
+        "icon": "$(target)"
+      },
+      {
+        "command": "alran.goalPause",
+        "title": "Pause Goal",
+        "category": "Alran",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "alran.goalResume",
+        "title": "Resume Goal",
+        "category": "Alran",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "alran.goalClear",
+        "title": "Clear Goal",
+        "category": "Alran",
+        "icon": "$(close)"
+      },
+      {
+        "command": "alran.agentsStop",
+        "title": "Stop All Sub-Agents",
+        "category": "Alran",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "alran.addSelection",
+        "title": "Add Selection to Chat",
+        "category": "Alran",
+        "icon": "$(add)"
+      },
+      {
+        "command": "alran.addFile",
+        "title": "Add File to Chat",
+        "category": "Alran",
+        "icon": "$(add)"
+      },
+      {
+        "command": "alran.addTerminalSelection",
+        "title": "Add Terminal Selection to Chat",
+        "category": "Alran",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "alran.explainSelection",
+        "title": "Explain This Code",
+        "category": "Alran",
+        "icon": "$(lightbulb)"
+      },
+      {
+        "command": "alran.fixSelection",
+        "title": "Fix This Code",
+        "category": "Alran",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "alran.fixDiagnostics",
+        "title": "Fix Problems in This File",
+        "category": "Alran",
+        "icon": "$(wrench)"
+      },
+      {
+        "command": "alran.reviewChanges",
+        "title": "Review Local Changes",
+        "category": "Alran",
+        "icon": "$(git-pull-request)"
+      },
+      {
+        "command": "alran.initProject",
+        "title": "Generate AGENTS.md (/init)",
+        "category": "Alran",
+        "icon": "$(book)"
+      },
+      {
+        "command": "alran.status",
+        "title": "Show Account and Model Status",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.doctor",
+        "title": "Check Configuration (/doctor)",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.usage",
+        "title": "Show Session Usage",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.context",
+        "title": "Show Context Usage",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.skills",
+        "title": "List Skills",
+        "category": "Alran",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "alran.mcp",
+        "title": "Inspect MCP Servers",
+        "category": "Alran",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "alran.help",
+        "title": "Show Help",
+        "category": "Alran",
+        "icon": "$(question)"
+      },
+      {
+        "command": "alran.changelog",
+        "title": "Show Changelog",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.openChange",
+        "title": "Show File Changes",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.revertChange",
+        "title": "Revert File",
+        "category": "Alran",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "alran.revertAllChanges",
+        "title": "Revert All Changes",
+        "category": "Alran",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "alran.clearChanges",
+        "title": "Clear Change List",
+        "category": "Alran",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "alran.refreshChanges",
+        "title": "Refresh Changes",
+        "category": "Alran",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "alran.refreshCapabilities",
+        "title": "Refresh",
+        "category": "Alran",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "alran.insertSkill",
+        "title": "Use Skill",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.pluginInstall",
+        "title": "Install Plugin",
+        "category": "Alran",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "alran.pluginUninstall",
+        "title": "Uninstall Plugin",
+        "category": "Alran",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "alran.pluginEnable",
+        "title": "Enable Plugin",
+        "category": "Alran",
+        "icon": "$(check)"
+      },
+      {
+        "command": "alran.pluginDisable",
+        "title": "Disable Plugin",
+        "category": "Alran",
+        "icon": "$(circle-slash)"
+      },
+      {
+        "command": "alran.pluginInstallBySelector",
+        "title": "Install Plugin by Name…",
+        "category": "Alran",
+        "icon": "$(add)"
+      },
+      {
+        "command": "alran.pluginMarketplaceUpgrade",
+        "title": "Refresh Plugin Sources",
+        "category": "Alran",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "alran.providerAdd",
+        "title": "Add Model Provider…",
+        "category": "Alran",
+        "icon": "$(add)"
+      },
+      {
+        "command": "alran.providerRemove",
+        "title": "Remove Provider",
+        "category": "Alran",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "alran.providerTest",
+        "title": "Test Provider",
+        "category": "Alran",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "alran.providerUseSource",
+        "title": "Choose Alran Credential Source…",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.providerSetKey",
+        "title": "Set Alran API Key…",
+        "category": "Alran",
+        "icon": "$(key)"
+      },
+      {
+        "command": "alran.login",
+        "title": "Sign In",
+        "category": "Alran",
+        "icon": "$(account)"
+      },
+      {
+        "command": "alran.logout",
+        "title": "Sign Out",
+        "category": "Alran",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "alran.update",
+        "title": "Update Alran CLI",
+        "category": "Alran",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "alran.installCli",
+        "title": "Install or Locate the CLI…",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.restartAgent",
+        "title": "Reload Agent (Config and Plugins)",
+        "category": "Alran",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "alran.openConfig",
+        "title": "Open config.yaml",
+        "category": "Alran",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "alran.openSettings",
+        "title": "Open Settings…",
+        "category": "Alran",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "alran.openTui",
+        "title": "Open Session in TUI",
+        "category": "Alran",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "alran.tuiCommand",
+        "title": "Run a TUI Command…",
+        "category": "Alran",
+        "icon": "$(terminal-tmux)"
+      },
+      {
+        "command": "alran.telemetryStatus",
+        "title": "Show Telemetry Status",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.telemetryPreview",
+        "title": "Preview Telemetry Payload",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.showLogs",
+        "title": "Show Logs",
+        "category": "Alran",
+        "icon": "$(output)"
+      },
+      {
+        "command": "alran.mascot",
+        "title": "Visit the Mascot",
+        "category": "Alran"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "alran.openChat",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a"
+      },
+      {
+        "command": "alran.newSession",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "alran.hasSession"
+      },
+      {
+        "command": "alran.addSelection",
+        "key": "ctrl+alt+l",
+        "mac": "cmd+alt+l",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "alran.explainSelection",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "alran.cancel",
+        "key": "ctrl+alt+backspace",
+        "mac": "cmd+alt+backspace",
+        "when": "alran.running"
+      },
+      {
+        "command": "alran.pickModel",
+        "key": "ctrl+alt+m",
+        "mac": "cmd+alt+m"
+      },
+      {
+        "command": "alran.togglePlanMode",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "alran.insertSkill",
+          "when": "false"
+        },
+        {
+          "command": "alran.openChange",
+          "when": "false"
+        },
+        {
+          "command": "alran.openSession",
+          "when": "false"
+        },
+        {
+          "command": "alran.pluginDisable",
+          "when": "false"
+        },
+        {
+          "command": "alran.pluginEnable",
+          "when": "false"
+        },
+        {
+          "command": "alran.pluginInstall",
+          "when": "false"
+        },
+        {
+          "command": "alran.pluginUninstall",
+          "when": "false"
+        },
+        {
+          "command": "alran.providerRemove",
+          "when": "false"
+        },
+        {
+          "command": "alran.providerTest",
+          "when": "false"
+        },
+        {
+          "command": "alran.revertChange",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "alran.newSession",
+          "when": "view == alran.chat",
+          "group": "navigation@1"
+        },
+        {
+          "command": "alran.resumeSession",
+          "when": "view == alran.chat",
+          "group": "navigation@2"
+        },
+        {
+          "command": "alran.openInEditor",
+          "when": "view == alran.chat",
+          "group": "navigation@3"
+        },
+        {
+          "command": "alran.openSettings",
+          "when": "view == alran.chat",
+          "group": "1_more"
+        },
+        {
+          "command": "alran.restartAgent",
+          "when": "view == alran.chat",
+          "group": "1_more"
+        },
+        {
+          "command": "alran.openTui",
+          "when": "view == alran.chat",
+          "group": "1_more"
+        },
+        {
+          "command": "alran.showLogs",
+          "when": "view == alran.chat",
+          "group": "1_more"
+        },
+        {
+          "command": "alran.refreshSessions",
+          "when": "view == alran.sessions",
+          "group": "navigation"
+        },
+        {
+          "command": "alran.revertAllChanges",
+          "when": "view == alran.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "alran.refreshChanges",
+          "when": "view == alran.changes",
+          "group": "navigation@2"
+        },
+        {
+          "command": "alran.clearChanges",
+          "when": "view == alran.changes",
+          "group": "navigation@3"
+        },
+        {
+          "command": "alran.agentsStop",
+          "when": "view == alran.agents",
+          "group": "navigation"
+        },
+        {
+          "command": "alran.refreshCapabilities",
+          "when": "view == alran.capabilities",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "alran.forkSession",
+          "when": "view == alran.sessions",
+          "group": "inline@1"
+        },
+        {
+          "command": "alran.closeSession",
+          "when": "view == alran.sessions && viewItem == session.open",
+          "group": "inline@2"
+        },
+        {
+          "command": "alran.revertChange",
+          "when": "view == alran.changes && viewItem == change",
+          "group": "inline"
+        },
+        {
+          "command": "alran.pluginInstall",
+          "when": "viewItem == plugin.available",
+          "group": "inline"
+        },
+        {
+          "command": "alran.pluginDisable",
+          "when": "viewItem == plugin.enabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "alran.pluginEnable",
+          "when": "viewItem == plugin.disabled",
+          "group": "inline@1"
+        },
+        {
+          "command": "alran.pluginUninstall",
+          "when": "viewItem =~ /^plugin\\.(enabled|disabled)$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "alran.pluginInstallBySelector",
+          "when": "viewItem == group.plugins",
+          "group": "inline@1"
+        },
+        {
+          "command": "alran.pluginMarketplaceUpgrade",
+          "when": "viewItem == group.plugins",
+          "group": "inline@2"
+        },
+        {
+          "command": "alran.providerAdd",
+          "when": "viewItem == group.providers",
+          "group": "inline@1"
+        },
+        {
+          "command": "alran.providerSetKey",
+          "when": "viewItem == group.providers",
+          "group": "inline@2"
+        },
+        {
+          "command": "alran.providerUseSource",
+          "when": "viewItem == group.providers",
+          "group": "1_more"
+        },
+        {
+          "command": "alran.providerTest",
+          "when": "viewItem =~ /^provider\\./",
+          "group": "inline@1"
+        },
+        {
+          "command": "alran.providerRemove",
+          "when": "viewItem == provider.editable",
+          "group": "inline@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "alran.addSelection",
+          "when": "editorHasSelection",
+          "group": "9_alran@1"
+        },
+        {
+          "command": "alran.explainSelection",
+          "when": "editorHasSelection",
+          "group": "9_alran@2"
+        },
+        {
+          "command": "alran.fixSelection",
+          "when": "editorHasSelection",
+          "group": "9_alran@3"
+        },
+        {
+          "command": "alran.addFile",
+          "when": "!editorHasSelection",
+          "group": "9_alran@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "alran.addFile",
+          "group": "9_alran",
+          "when": "resourceScheme == file"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "alran.addFile",
+          "group": "9_alran",
+          "when": "!explorerResourceIsFolder"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "alran.addTerminalSelection",
+          "group": "9_alran",
+          "when": "terminalTextSelected"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "alran.reviewChanges",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Alran Code",
+      "properties": {
+        "alran.executablePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "Path to the `alran` CLI or its `cli.js`. Leave empty to search `PATH`, the login shell, and standard install locations."
+        },
+        "alran.nodePath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Node.js executable used when alran.executablePath points at a JavaScript file. Alran needs Node 22.19 or newer."
+        },
+        "alran.env": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "scope": "machine-overridable",
+          "markdownDescription": "Extra environment variables for the agent, for example `ALRAN_DATA_DIR`."
+        },
+        "alran.lane": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Managed backend lane, for test or staging builds only."
+        },
+        "alran.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start the agent and open a session as soon as the chat view is shown."
+        },
+        "alran.systemPrompt": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Replaces the identity prompt (`--system-prompt`). Runtime rules, project instructions, Memory, and Skills stay."
+        },
+        "alran.systemPromptFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "File that replaces the identity prompt (`--system-prompt-file`)."
+        },
+        "alran.appendSystemPrompt": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Text added after the identity prompt (`--append-system-prompt`)."
+        },
+        "alran.appendSystemPromptFile": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "File added after the identity prompt (`--append-system-prompt-file`)."
+        },
+        "alran.mcpServers": {
+          "type": "array",
+          "default": [],
+          "markdownDescription": "MCP servers added to every session from this editor, in ACP format: `{ \"name\", \"command\", \"args\": [], \"env\": [] }` or `{ \"type\": \"http\"|\"sse\", \"name\", \"url\", \"headers\": [] }`.",
+          "items": {
+            "type": "object"
+          }
+        },
+        "alran.chat.enterWhileRunning": {
+          "type": "string",
+          "enum": [
+            "steer",
+            "queue"
+          ],
+          "default": "steer",
+          "enumDescriptions": [
+            "Enter delivers the message into the running turn; Ctrl+Enter queues it.",
+            "Enter queues the message for after this turn; Ctrl+Enter steers."
+          ],
+          "description": "What Enter does while a turn is running."
+        },
+        "alran.chat.sendShortcut": {
+          "type": "string",
+          "enum": [
+            "enter",
+            "ctrlEnter"
+          ],
+          "default": "enter",
+          "description": "Key that sends a message. The other combination inserts a new line."
+        },
+        "alran.chat.showThinking": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the model's reasoning in the transcript."
+        },
+        "alran.context.includeActiveFile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Share a reference to the current editor file with each message. Can be toggled in the composer."
+        },
+        "alran.confirmFullAccess": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask for confirmation before switching to the Full Access permission mode."
+        },
+        "alran.notifications.when": {
+          "type": "string",
+          "enum": [
+            "unfocused",
+            "always",
+            "never"
+          ],
+          "default": "unfocused",
+          "description": "When to show notifications for finished turns and requests for input."
+        },
+        "alran.notifications.events": {
+          "type": "array",
+          "default": [
+            "turn-complete",
+            "turn-failed",
+            "permission-required",
+            "question-required"
+          ],
+          "items": {
+            "type": "string",
+            "enum": [
+              "turn-complete",
+              "turn-failed",
+              "permission-required",
+              "question-required"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "Events that show a notification."
+        }
+      }
+    },
+    "walkthroughs": [
+      {
+        "id": "alran.gettingStarted",
+        "title": "Get started with Alran Code",
+        "description": "Connect the CLI, sign in, and run your first task.",
+        "steps": [
+          {
+            "id": "install",
+            "title": "Install the Alran CLI",
+            "description": "The extension drives the `alran` command through the Agent Client Protocol.\n[Install or Locate the CLI](command:alran.installCli)",
+            "media": {
+              "markdown": "media/walkthrough/install.md"
+            },
+            "completionEvents": [
+              "onCommand:alran.installCli"
+            ]
+          },
+          {
+            "id": "signin",
+            "title": "Sign in or add a provider",
+            "description": "Use your Ottili account, or bring your own API key.\n[Sign In](command:alran.login)\n[Add a Provider](command:alran.providerAdd)",
+            "media": {
+              "markdown": "media/walkthrough/signin.md"
+            },
+            "completionEvents": [
+              "onCommand:alran.login",
+              "onCommand:alran.providerAdd"
+            ]
+          },
+          {
+            "id": "chat",
+            "title": "Run your first task",
+            "description": "Open the chat and describe what you need.\n[Open Chat](command:alran.openChat)",
+            "media": {
+              "markdown": "media/walkthrough/chat.md"
+            },
+            "completionEvents": [
+              "onCommand:alran.openChat"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration",
+    "test:e2e": "node esbuild.mjs && node esbuild.mjs --tests && node dist-test/runE2e.cjs",
+    "package": "node esbuild.mjs --production && vsce package --no-dependencies --allow-missing-repository --no-rewrite-relative-links",
+    "vscode:prepublish": "node esbuild.mjs --production"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.3.0",
+    "@vscode/codicons": "0.0.46-24",
+    "dompurify": "3.4.17",
+    "highlight.js": "11.12.0",
+    "marked": "18.1.3",
+    "preact": "11.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.0",
+    "@types/vscode": "1.90.0",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.1.0",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}
