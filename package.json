@@ -137,6 +137,12 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "alran.slashCommands",
+        "title": "Slash Commands…",
+        "category": "Alran",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "alran.openInEditor",
         "title": "Open Chat in Editor",
         "category": "Alran",
@@ -411,6 +417,24 @@
         "category": "Alran"
       },
       {
+        "command": "alran.openStore",
+        "title": "Browse Plugin Store…",
+        "category": "Alran",
+        "icon": "$(extensions)"
+      },
+      {
+        "command": "alran.openSkillLibrary",
+        "title": "Browse Skill Library…",
+        "category": "Alran",
+        "icon": "$(library)"
+      },
+      {
+        "command": "alran.addStore",
+        "title": "Add Plugin Store…",
+        "category": "Alran",
+        "icon": "$(add)"
+      },
+      {
         "command": "alran.pluginInstall",
         "title": "Install Plugin",
         "category": "Alran",
@@ -501,7 +525,7 @@
       },
       {
         "command": "alran.restartAgent",
-        "title": "Reload Agent (Config and Plugins)",
+        "title": "Reload Agent",
         "category": "Alran",
         "icon": "$(refresh)"
       },
@@ -780,9 +804,14 @@
           "group": "navigation"
         },
         {
+          "command": "alran.openStore",
+          "when": "view == alran.capabilities",
+          "group": "navigation@1"
+        },
+        {
           "command": "alran.refreshCapabilities",
           "when": "view == alran.capabilities",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "alran.refreshAccount",
@@ -860,6 +889,11 @@
           "command": "alran.pluginUninstall",
           "when": "viewItem =~ /^plugin\\.(enabled|disabled)$/",
           "group": "inline@2"
+        },
+        {
+          "command": "alran.openStore",
+          "when": "viewItem == group.plugins",
+          "group": "inline@0"
         },
         {
           "command": "alran.pluginInstallBySelector",
@@ -1148,6 +1182,18 @@
             ]
           },
           {
+            "id": "store",
+            "title": "Add Plugins and Skills",
+            "description": "Browse the Plugin Store and the Skill Library. Anything that runs commands asks you first.\n[Browse Plugin Store](command:alran.openStore)\n[Browse Skill Library](command:alran.openSkillLibrary)",
+            "media": {
+              "markdown": "media/walkthrough/store.md"
+            },
+            "completionEvents": [
+              "onCommand:alran.openStore",
+              "onCommand:alran.openSkillLibrary"
+            ]
+          },
+          {
             "id": "chat",
             "title": "Run your first task",
             "description": "Open the chat and describe what you need. Alran plans, edits, runs and checks.\n[Open Chat](command:alran.openChat)",
@@ -1205,6 +1251,7 @@
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
     "test:e2e": "node esbuild.mjs && node esbuild.mjs --tests && node dist-test/runE2e.cjs",
+    "sync:tui": "node scripts/sync-tui-commands.mjs",
     "package": "node esbuild.mjs --production && vsce package --no-dependencies",
     "vscode:prepublish": "node esbuild.mjs --production",
     "publish:vsce": "vsce publish --no-dependencies",

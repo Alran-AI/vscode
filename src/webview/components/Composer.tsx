@@ -155,11 +155,14 @@ export function Composer({
   latestSend.current = send;
   useEffect(() => {
     composerEvents.addAttachments = (added) => setAttachments((previous) => [...previous, ...added]);
-    composerEvents.setDraft = (draft, sendNow) => {
+    composerEvents.setDraft = (draft, sendNow, menu) => {
       if (sendNow) latestSend.current(draft, false);
       else {
         setText(draft);
-        setMenuDismissed(true);
+        setCursor(draft.length);
+        setMenuIndex(0);
+        // A draft from an editor command stays quiet unless it asks for the menu.
+        setMenuDismissed(menu !== true);
         textarea.current?.focus();
       }
     };

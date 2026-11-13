@@ -2,7 +2,16 @@
 
 ## 0.2.0
 
-The first public release. Needs the Alran CLI 0.2.0 or newer.
+The first public release. Needs the Alran CLI 0.9.0 or newer.
+
+### Plugin Store and Skill Library
+
+- **Alran: Browse Plugin Store…** and **Browse Skill Library…** open the Store of the CLI in the editor: Plugins, the Skill Library (grouped, with Alran's built-in Skills last), what is installed and the stores it reads. Type to search, **Enter** installs or updates, buttons show details, switch a Plugin on or off and remove it.
+- `/plugin` (also `/plugins` and `/store`) and `/skills library [words]` open it from the chat. The *Plugins* group of the Capabilities view has the same entry.
+- A Plugin that runs commands or connects to services is shown to you first, with each MCP server command, hook and connector, and is installed only after you approve. The same approval applies when you install from the Capabilities view or by name.
+- **Alran: Add Plugin Store…** adds a store; a store that cannot be read is reported in the list instead of hiding the others.
+- After a change the extension offers a **New Chat**, because Skills and Plugins load when a chat starts. *Reload Agent* no longer claims to reload Plugins.
+- **Alran: Slash Commands…** focuses the composer with the command menu open.
 
 ### Ottili account
 
@@ -32,7 +41,8 @@ The first public release. Needs the Alran CLI 0.2.0 or newer.
 - The Alran CLI is required: when it is missing, the extension says so right after startup (not only in the chat) and offers to install it with the official script or npm, or to point the extension at an existing installation.
 - The provider wizard validates its input, explains the API formats and can test and select the new provider in one step.
 - Windows shortcuts use `Ctrl+Shift+Alt`, so they no longer swallow `AltGr` characters such as `@`, `€` and `µ`.
-- New icon in the Alran brand.
+- New icon in the Alran brand, in the Marketplace, the activity bar and the editor.
+- Screenshots in the README are produced by the end-to-end suite, so they show the shipped UI.
 
 ## 0.1.0
 

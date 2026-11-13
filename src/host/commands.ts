@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import * as cli from '../core/cli';
+import { itemFromPluginInfo, itemFromSelector } from '../core/store';
 import { describeFailure } from '../shared/errors';
 import type { ComposerAttachment } from '../shared/types';
 import type { AccountService } from './account';
@@ -15,6 +16,7 @@ import {
 } from './context';
 import { openChangeDiff } from './diff';
 import type { AlranRuntime } from './runtime';
+import type { StoreBrowser } from './store';
 import type { AgentsTree, CapabilitiesTree, CapabilityNode, ChangeNode, ChangesTree, SessionNode, SessionsTree } from './trees';
 
 export interface CommandDependencies {
@@ -26,6 +28,7 @@ export interface CommandDependencies {
   readonly changes: ChangesTree;
   readonly agents: AgentsTree;
   readonly capabilities: CapabilitiesTree;
+  readonly store: StoreBrowser;
 }
 
 const API_FORMATS = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai'];
@@ -37,7 +40,7 @@ const API_FORMAT_HINTS: Readonly<Record<string, string>> = {
 };
 
 export function registerCommands(deps: CommandDependencies): vscode.Disposable[] {
-  const { runtime, actions, hub, account, sessions, changes, agents, capabilities } = deps;
+  const { runtime, actions, hub, account, sessions, changes, agents, capabilities, store } = deps;
 
   const addToChat = async (attachments: readonly ComposerAttachment[]) => {
     await hub.focus();
@@ -62,23 +65,28 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
   const withProgress = (title: string, run: () => Promise<void>) =>
     vscode.window.withProgress({ location: { viewId: 'alran.capabilities' }, title }, run);
 
-  const pluginAction = (action: cli.PluginAction, verb: string) => async (node: CapabilityNode) => {
+  /** Install, remove, switch on or off: the Store's own flow, so an approval is asked for when needed. */
+  const pluginAction = (action: 'install' | 'remove' | 'enable' | 'disable', verb: string) => async (node: CapabilityNode) => {
     if (node.kind !== 'plugin') return;
-    await withProgress(`${verb} ${node.plugin.name}…`, async () => {
-      await cli.plugins.action(await runtime.cliContext(), action, cli.pluginSelector(node.plugin));
-    });
+    const name = node.plugin.displayName ?? node.plugin.name;
+    const changed = await store.apply(action, itemFromPluginInfo(node.plugin));
     refreshCapabilities();
-    const reload = 'Reload Agent';
+    if (!changed) return;
+    const fresh = 'New Chat';
     const choice = await vscode.window.showInformationMessage(
-      `${node.plugin.name}: ${verb.toLowerCase()} done. Reload the agent to apply it.`,
-      reload,
+      `${name}: ${verb.toLowerCase()} done. It loads in new chats; open chats keep what they started with.`,
+      fresh,
     );
-    if (choice === reload) await actions.restartAgent();
+    if (choice === fresh) await actions.newSession();
   };
 
   const handlers: Record<string, (...args: never[]) => unknown> = {
     // Chat and sessions
     'alran.openChat': () => hub.focus(),
+    'alran.slashCommands': async () => {
+      await hub.focus();
+      hub.setDraft('/', false, true);
+    },
     'alran.openInEditor': () => hub.openInEditor(),
     'alran.newSession': () => actions.newSession(),
     'alran.resumeSession': () => actions.pickSession(),
@@ -229,21 +237,26 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
       await hub.focus();
       hub.setDraft(`/${name} `);
     },
-    'alran.pluginInstall': pluginAction('add', 'Installing'),
+    'alran.pluginInstall': pluginAction('install', 'Installing'),
     'alran.pluginUninstall': pluginAction('remove', 'Removing'),
     'alran.pluginEnable': pluginAction('enable', 'Enabling'),
     'alran.pluginDisable': pluginAction('disable', 'Disabling'),
     'alran.pluginInstallBySelector': async () => {
       const selector = await vscode.window.showInputBox({
         title: 'Install Plugin',
-        prompt: 'Plugin selector, for example name@official',
+        prompt: 'Plugin name, or name@store when several stores offer it',
       });
       if (!selector?.trim()) return;
-      await withProgress(`Installing ${selector}…`, async () => {
-        await cli.plugins.action(await runtime.cliContext(), 'add', selector.trim());
-      });
+      const changed = await store.apply('install', itemFromSelector(selector.trim()));
       refreshCapabilities();
+      if (changed && (await vscode.window.showInformationMessage(`${selector.trim()} installed. It loads in new chats.`, 'New Chat')) === 'New Chat') {
+        await actions.newSession();
+      }
     },
+    'alran.openStore': (view?: unknown) =>
+      store.open(view === 'library' || view === 'installed' || view === 'stores' ? view : 'plugins'),
+    'alran.openSkillLibrary': () => store.open('library'),
+    'alran.addStore': () => store.addStore(),
     'alran.pluginMarketplaceUpgrade': async () => {
       await withProgress('Refreshing Plugin sources…', async () => {
         await cli.plugins.upgradeMarketplaces(await runtime.cliContext());

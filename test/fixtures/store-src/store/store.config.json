@@ -1,0 +1,45 @@
+{
+  "schema": "alran.store.build/v1",
+  "name": "Alran Test Store",
+  "description": "A tiny store for the extension's tests.",
+  "skills": {
+    "pluginOnly": [],
+    "groups": {
+      "demo": "Demo skills"
+    },
+    "versions": {
+      "demo": "1.0.0"
+    }
+  },
+  "plugins": [
+    {
+      "name": "demo-skills",
+      "displayName": "Demo Skills",
+      "version": "1.0.0",
+      "description": "Three small skills for reading and releasing code.",
+      "author": "Alran test fixtures",
+      "license": "MIT",
+      "category": "Code",
+      "packages": [
+        "demo"
+      ],
+      "exampleQueries": [
+        "Give me a tour of this repository"
+      ],
+      "icon": "icons/demo-skills.png"
+    },
+    {
+      "name": "hook-demo",
+      "displayName": "Hook Demo",
+      "version": "1.0.0",
+      "description": "One Skill and a session-start hook, used to test the approval step before a Plugin that runs commands is installed.",
+      "author": "Alran test fixtures",
+      "license": "MIT",
+      "category": "Code",
+      "directory": "../packages/hook-demo",
+      "exampleQueries": [
+        "Say hello from the demo plugin"
+      ]
+    }
+  ]
+}

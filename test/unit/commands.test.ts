@@ -13,6 +13,7 @@ import {
 } from '../../src/shared/commands';
 import { toPromptBlocks, toQuestionFields, flattenForSteer } from '../../src/core/session';
 import { parseMcpList } from '../../src/host/parseMcp';
+import { hasSibling, readTuiCommands } from '../../scripts/tui-commands.mjs';
 
 const root = path.resolve(__dirname, '..', '..');
 const read = (file: string) => readFileSync(path.join(root, file), 'utf8');
@@ -46,27 +47,18 @@ describe('TUI parity', () => {
   const INTERNAL_TUI_COMMANDS = new Set(['archive', 'config', 'decision', 'allow', 'always', 'deny', 'permissions']);
 
   it('every public TUI slash command is available in the extension', () => {
-    const catalog = readFileSync(
-      path.join(root, '..', 'alran-code', 'packages', 'tui', 'src', 'tui', 'commands', 'catalog.ts'),
-      'utf8',
-    );
-    const descriptors = readFileSync(
-      path.join(root, '..', 'alran-code', 'packages', 'tui', 'src', 'application', 'command-descriptors.ts'),
-      'utf8',
-    );
-    const names = new Set(
-      [...catalog.matchAll(/^\s+name: '([a-z-]+)',/gmu), ...descriptors.matchAll(/^\s+name: '([a-z-]+)',/gmu)].map(
-        (match) => match[1] ?? '',
-      ),
-    );
-    const aliases = [...catalog.matchAll(/aliases: \[([^\]]+)\]/gu)].flatMap((match) =>
-      [...(match[1] ?? '').matchAll(/'([a-z-]+)'/gu)].map((alias) => alias[1] ?? ''),
-    );
+    // A snapshot of the TUI's commands (`pnpm sync:tui` refreshes it), so this runs without alran-code.
+    const snapshot = JSON.parse(read('test/fixtures/tui-commands.json')) as { names: string[]; aliases: string[] };
     const supported = new Set([...CLIENT_COMMANDS.map((command) => command.name), ...AGENT_HANDLED_COMMANDS]);
-    const missing = [...names, ...aliases].filter(
+    const missing = [...snapshot.names, ...snapshot.aliases].filter(
       (name) => !supported.has(name) && !INTERNAL_TUI_COMMANDS.has(name),
     );
     expect(missing).toEqual([]);
+  });
+
+  it.skipIf(!hasSibling())('the snapshot matches the alran-code checkout next to this repository', () => {
+    const snapshot = JSON.parse(read('test/fixtures/tui-commands.json')) as Record<string, unknown>;
+    expect(snapshot).toEqual(readTuiCommands());
   });
 
   it('every client command has a handler', () => {

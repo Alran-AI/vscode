@@ -51,7 +51,7 @@ describe.skipIf(!findCli())('Ottili account through the real CLI', () => {
     expect(outcome.alreadySignedIn).toBe(false);
     expect(await account.status(context)).toMatchObject({
       signedIn: true,
-      name: 'Test Person',
+      name: 'Alex Morgan',
       companyId: 'cmp-acme',
       projectId: null,
     });

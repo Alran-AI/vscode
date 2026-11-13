@@ -49,11 +49,17 @@ async function marketingShot(name: string): Promise<void> {
   if (!marketingDir) return;
   await vscode.commands.executeCommand('notifications.clearAll').then(undefined, () => undefined);
   await sleep(500);
+  // The window title of a test run reads "[Extension Development Host] … [Superuser]": blank it with the
+  // title bar's own colour. Nothing else on the screen is touched.
+  const grab = [
+    'from PIL import ImageGrab, ImageDraw',
+    `image = ImageGrab.grab(xdisplay=${JSON.stringify(process.env.DISPLAY)})`,
+    'width = image.size[0]',
+    'ImageDraw.Draw(image).rectangle([width // 2 - 250, 3, width // 2 + 250, 27], fill=image.getpixel((width // 2 - 262, 14)))',
+    `image.save(${JSON.stringify(path.join(marketingDir, `${name}.png`))}, optimize=True)`,
+  ].join('\n');
   try {
-    execFileSync('python3', [
-      '-c',
-      `from PIL import ImageGrab; ImageGrab.grab(xdisplay=${JSON.stringify(process.env.DISPLAY)}).save(${JSON.stringify(path.join(marketingDir, `${name}.png`))})`,
-    ]);
+    execFileSync('python3', ['-c', grab]);
   } catch (error) {
     console.warn(`marketing screenshot failed: ${String(error)}`);
   }
@@ -289,7 +295,7 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       const state = (await (await fetch(`${ottili}/__test/state`)).json()) as unknown;
       const diagnostics = JSON.stringify({ result, snapshot: api.account.snapshot, state }).slice(0, 3000);
       assert.equal(result, true, diagnostics);
-      assert.equal(api.account.snapshot.status?.name, 'Test Person', diagnostics);
+      assert.equal(api.account.snapshot.status?.name, 'Alex Morgan', diagnostics);
       await waitFor('credits', () => api.account.snapshot.credits?.available_microcents === 4_800_000);
       await waitFor('agent back', () => api.runtime.manager.connection.state === 'connected' && api.runtime.manager.active?.meta.status === 'idle', 60_000);
       const rows = api.trees.account.getChildren();
@@ -302,7 +308,7 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       await sleep(800);
       screenshot('10-account-signed-in');
       const [accountSession] = await api.authProvider.getSessions();
-      assert.equal(accountSession?.account.label, 'Test Person');
+      assert.equal(accountSession?.account.label, 'Alex Morgan');
       assert.equal(accountSession?.accessToken, '', 'the Platform session never leaves the CLI');
     },
   ],
@@ -368,51 +374,184 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
     'captures the README screenshots',
     async (api) => {
       if (!marketingDir) return;
-      await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar').then(undefined, () => undefined);
+      const close = (command: string) => vscode.commands.executeCommand(command).then(undefined, () => undefined);
+      // Every shot starts from a chat of its own, so the transcript shows only that scene.
+      const freshChat = async () => {
+        for (const id of [...api.runtime.manager.sessions.keys()]) await api.runtime.manager.closeSession(id).catch(() => undefined);
+        await api.actions.newSession();
+        await close('workbench.action.closeSidebar');
+        const fresh = api.runtime.manager.active!;
+        await waitFor('idle', () => fresh.meta.status === 'idle');
+        await chooseModel(fresh, 'alran/Alran-Werk');
+        return fresh;
+      };
+      await close('workbench.action.closeAuxiliaryBar');
+      await close('workbench.action.closePanel');
+      await close('workbench.action.closeSidebar');
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-      await vscode.commands.executeCommand('workbench.action.closePanel').then(undefined, () => undefined);
-      await api.actions.newSession();
-      const session = api.runtime.manager.active!;
-      await waitFor('idle', () => session.meta.status === 'idle');
+      const werk = api.account.snapshot.models?.find((model) => model.key === 'alran/Alran-Werk');
+      assert.ok(werk, 'Ottili Werk is on offer');
+      await api.account.setDefaultModel(werk);
+      await api.account.refresh({ usage: true });
       const source = path.join(workspace, 'src', 'date.ts');
-      await vscode.commands.executeCommand('workbench.action.closeSidebar');
       await vscode.window.showTextDocument(vscode.Uri.file(source), { preview: false, viewColumn: vscode.ViewColumn.One });
       api.hub.openInEditor();
       await waitFor('panel ready', () => api.hub.readySurfaceCount > 1, 30_000);
+
+      // 1. A finished task: the edit, the explanation, and where to review it.
+      let session = await freshChat();
       await session.setConfigOption('permissionMode', 'auto');
-      await chooseModel(session, 'alran/Alran-Werk');
       await api.actions.sendPrompt({ text: 'Make parseDate reject invalid dates', attachments: [] });
       await waitFor('demo reply', () => session.model.lastAssistantText()?.includes('Changes') === true, 60_000);
       await waitFor('idle', () => session.meta.status === 'idle');
-      await sleep(1_000);
+      await sleep(1_200);
       await marketingShot('chat');
 
+      // 2. The same edit in the diff editor, next to the conversation.
+      const change = session.changes.get(source);
+      assert.ok(change, 'the demo edit is tracked');
+      // The diff opens beside the code, not on top of the chat.
+      await vscode.commands.executeCommand('workbench.action.focusFirstEditorGroup');
+      await vscode.commands.executeCommand('alran.openChange', { kind: 'change', change });
+      await waitFor('diff tab', () => vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTextDiff);
+      await sleep(1_200);
+      await marketingShot('diff');
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+      await vscode.window.showTextDocument(vscode.Uri.file(source), { preview: false, viewColumn: vscode.ViewColumn.One });
+
+      // 3. A write outside the project needs a yes.
+      session = await freshChat();
       await session.setConfigOption('permissionMode', 'default');
-      void api.actions.sendPrompt({ text: 'Also copy the result to the shared folder', attachments: [] });
+      void api.actions.sendPrompt({ text: 'Publish the release notes to the shared folder', attachments: [] });
       await waitFor('permission', () => session.meta.status === 'awaiting-input', 30_000);
-      await sleep(600);
+      await sleep(900);
       await marketingShot('permission');
       const request = session.model.items.findLast((item) => item.kind === 'permission' && !item.resolution);
       if (request) session.answerPermission(request.id, 'deny');
       await waitFor('idle', () => session.meta.status === 'idle', 30_000);
 
-      await vscode.commands.executeCommand('alran.account.focus');
-      await sleep(600);
+      // 4. Models with their prices and what the credit covers.
+      session = await freshChat();
       const picking = vscode.commands.executeCommand('alran.pickModel');
-      await sleep(1_200);
-      await marketingShot('account');
+      await sleep(1_500);
+      await marketingShot('models');
       await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
       await picking;
 
-      await vscode.commands.executeCommand('workbench.action.closeSidebar');
+      // 5. The slash menu: every TUI command, plus Skills.
+      await vscode.commands.executeCommand('alran.slashCommands');
+      await sleep(1_500);
+      await marketingShot('slash');
+      api.hub.setDraft('', false);
+
+      // 6. A model the credit does not cover, as a card with what to do next.
+      session = await freshChat();
       await chooseModel(session, 'alran/anthropic/claude-opus-5.5', 'thinking');
-      await api.actions.sendPrompt({ text: 'Now review the whole module with Claude Opus', attachments: [] });
+      await api.actions.sendPrompt({ text: 'Review the whole module with Claude Opus', attachments: [] });
       await waitFor('failure', () => session.model.items.some((item) => item.kind === 'notice' && item.failure !== undefined), 90_000);
       await waitFor('idle', () => session.meta.status === 'idle');
-      await sleep(600);
+      await sleep(900);
       await marketingShot('failure');
-      await session.changes.revert(source).catch(() => undefined);
+
+      // 7. The account in the sidebar, next to code.
+      session = await freshChat();
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.window.showTextDocument(vscode.Uri.file(path.join(workspace, 'src', 'invoice.ts')), { preview: false, viewColumn: vscode.ViewColumn.One });
+      await vscode.commands.executeCommand('alran.account.focus');
+      await vscode.commands.executeCommand('list.expandAll').then(undefined, () => undefined);
+      await sleep(1_200);
+      await marketingShot('account');
+      await close('workbench.action.closeSidebar');
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    },
+  ],
+  [
+    'captures the Store for the README',
+    async (api) => {
+      if (!marketingDir || !process.env.ALRAN_E2E_STORE) return;
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.window.showTextDocument(vscode.Uri.file(path.join(workspace, 'src', 'invoice.ts')), { preview: false, viewColumn: vscode.ViewColumn.One });
+      await api.store.open('plugins');
+      await waitFor('plugins listed', () => api.store.rows.filter((row) => row.item).length > 10, 60_000);
+      await sleep(1_000);
+      await marketingShot('store');
+      await api.store.open('library', 'react');
+      await waitFor('library listed', () => api.store.view === 'library' && api.store.rows.some((row) => row.item), 60_000);
+      await sleep(1_000);
+      await marketingShot('skill-library');
+      api.store.close();
+      await waitFor('store closed', () => !api.store.isOpen);
+    },
+  ],
+  [
+    'browses the Plugin Store, asks before a Plugin that runs commands, and loads what it installs',
+    async (api) => {
+      if (process.env.ALRAN_E2E_STORE) return; // README run with the real store: see "captures the Store"
+      const rowNamed = (name: string) => api.store.rows.find((row) => row.item?.name === name);
+      const questions: Array<{ message: string; detail: string }> = [];
+      const asked = () => questions as ReadonlyArray<{ message: string; detail: string }>;
+      api.store.ask = (request) => {
+        questions.push({ message: request.message, detail: request.detail });
+        return Promise.resolve(true);
+      };
+
+      // `/plugin` opens the Store on its Plugins; `/skills library <words>` opens the Library, searched.
+      assert.equal(await api.hub.router!.dispatch({ name: 'plugin', args: '' }), true);
+      await waitFor('plugins listed', () => api.store.view === 'plugins' && rowNamed('demo-skills') !== undefined);
+      assert.ok(rowNamed('hook-demo'), 'the second Plugin is on offer');
+      await sleep(600);
+      screenshot('store-plugins');
+
+      // A Plugin that only holds Skills installs at once. Skills load when a session starts: a new chat has them.
+      await api.store.accept(rowNamed('demo-skills')!);
+      await waitFor('installed', () => rowNamed('demo-skills')?.item?.installed === true);
+      assert.equal(asked().length, 0);
+      await api.actions.newSession();
+      await waitFor('new chat idle', () => api.runtime.manager.active?.meta.status === 'idle', 60_000);
+      await waitFor('its skills', () => api.runtime.manager.active!.meta.commands.some((command) => command.source === 'skill' && command.name.includes('code-tour')), 30_000).catch((error: unknown) => {
+        const names = api.runtime.manager.active!.meta.commands.map((command) => `${command.source}:${command.name}`);
+        throw new Error(`${String(error)} (commands: ${names.join(', ')})`);
+      });
+
+      // A Plugin with a hook is shown to the person first.
+      await api.store.accept(rowNamed('hook-demo')!);
+      await waitFor('hook installed', () => rowNamed('hook-demo')?.item?.installed === true);
+      assert.equal(asked().length, 1);
+      assert.match(asked()[0]!.message, /hook-demo|Hook Demo/u);
+      assert.match(asked()[0]!.detail, /SessionStart/u);
+
+      // Installed shows both; switching a Plugin off is remembered.
+      await api.store.show('installed');
+      await waitFor('installed view', () => rowNamed('demo-skills') !== undefined && rowNamed('hook-demo') !== undefined);
+      await api.store.perform('disable', rowNamed('demo-skills')!);
+      await waitFor('switched off', () => rowNamed('demo-skills')?.item?.enabled === false);
+      await api.store.perform('enable', rowNamed('demo-skills')!);
+      await waitFor('switched on', () => rowNamed('demo-skills')?.item?.enabled === true);
+      await sleep(400);
+      screenshot('store-installed');
+
+      // The Skill Library groups Skills and keeps Alran's own at the end.
+      assert.equal(await api.hub.router!.dispatch({ name: 'skills', args: 'library tour' }), true);
+      await waitFor('library', () => api.store.view === 'library' && rowNamed('code-tour') !== undefined);
+      assert.equal(api.store.query, 'tour');
+      assert.ok(api.store.rows.some((row) => row.kind === vscode.QuickPickItemKind.Separator && row.label === 'Demo skills'));
+      await sleep(500);
+      screenshot('store-library');
+
+      // Removing needs a yes, and leaves nothing behind.
+      await api.store.show('installed');
+      await waitFor('installed again', () => rowNamed('hook-demo') !== undefined);
+      for (const name of ['hook-demo', 'demo-skills']) {
+        questions.length = 0;
+        await api.store.perform('remove', rowNamed(name)!);
+        await waitFor(`${name} removed`, () => rowNamed(name) === undefined);
+        assert.match(asked()[0]?.message ?? '', /^Remove /u);
+      }
+      api.store.close();
+      await waitFor('store closed', () => !api.store.isOpen);
+      // `alran.addStore` and the commands exist for the palette.
+      const commands = new Set(await vscode.commands.getCommands(true));
+      for (const id of ['alran.openStore', 'alran.openSkillLibrary', 'alran.addStore']) assert.ok(commands.has(id), id);
     },
   ],
   [

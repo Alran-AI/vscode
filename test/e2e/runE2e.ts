@@ -11,6 +11,7 @@ async function main(): Promise<void> {
   const fixture = await createFixture();
   const ottili = await createFakeOttili({ upstream: fixture.modelOrigin });
   const root = process.cwd();
+  const marketing = Boolean(process.env.ALRAN_E2E_MARKETING_DIR);
   mkdirSync(path.join(fixture.workspace, '.vscode'), { recursive: true });
   writeFileSync(
     path.join(fixture.workspace, '.vscode', 'settings.json'),
@@ -20,9 +21,21 @@ async function main(): Promise<void> {
       'workbench.startupEditor': 'none',
       'security.workspace.trust.enabled': false,
       'window.restoreWindows': 'none',
+      // Quieter chrome for the README shots and the tests alike.
+      'editor.minimap.enabled': false,
+      'breadcrumbs.enabled': false,
+      'workbench.layoutControl.enabled': false,
+      'window.commandCenter': false,
+      'window.title': '${rootName}',
+      ...(marketing ? { 'chat.disableAIFeatures': true } : {}),
     }),
   );
   const userData = path.join(path.dirname(fixture.workspace), 'vscode-user');
+  if (marketing) {
+    // A larger UI, so the shots stay readable at README width.
+    mkdirSync(path.join(userData, 'User'), { recursive: true });
+    writeFileSync(path.join(userData, 'User', 'settings.json'), JSON.stringify({ 'window.zoomLevel': 1, 'telemetry.telemetryLevel': 'off' }));
+  }
   try {
     await runTests({
       version: process.env.ALRAN_TEST_VSCODE ?? 'stable',
@@ -46,6 +59,7 @@ async function main(): Promise<void> {
         ALRAN_E2E_ONLY: process.env.ALRAN_E2E_ONLY ?? '',
         ALRAN_E2E_NO_CLI: process.env.ALRAN_E2E_NO_CLI ?? '',
         ALRAN_E2E_MARKETING_DIR: process.env.ALRAN_E2E_MARKETING_DIR ?? '',
+        ALRAN_E2E_STORE: process.env.ALRAN_E2E_STORE ?? '',
         ALRAN_E2E_WORKSPACE: fixture.workspace,
         ALRAN_E2E_SCREENSHOT_DIR: process.env.ALRAN_E2E_SCREENSHOT_DIR ?? '',
       } as Record<string, string>,

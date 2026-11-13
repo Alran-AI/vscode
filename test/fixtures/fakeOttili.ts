@@ -149,7 +149,7 @@ export async function createFakeOttili(options: { readonly upstream?: string } =
       return;
     }
     if (route === 'GET /v2/profile') {
-      return data(response, { profile: { display_name: 'Test Person', subject_id: 'subj-1' } });
+      return data(response, { profile: { display_name: 'Alex Morgan', subject_id: 'subj-1' } });
     }
     if (url.pathname.startsWith('/v2/auth/sessions/')) {
       if (request.method === 'DELETE') {

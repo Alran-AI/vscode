@@ -14,10 +14,11 @@ import { AlranCodeActions } from './host/context';
 import { VirtualDocuments } from './host/diff';
 import { AlranRuntime } from './host/runtime';
 import { SlashRouter } from './host/slash';
+import { StoreBrowser } from './host/store';
 import { AccountTree, AgentsTree, CapabilitiesTree, ChangesTree, compareVersions, SessionsTree } from './host/trees';
 
 /** The first CLI with the account commands (`alran auth`, `models`, `usage`, `billing`). */
-const MIN_CLI_VERSION = '0.2.0';
+const MIN_CLI_VERSION = '0.9.0';
 
 /** Settings read when the agent process starts. */
 const AGENT_SETTINGS = [
@@ -37,6 +38,8 @@ export interface AlranExtensionApi {
   readonly hub: ChatHub;
   readonly actions: AlranActions;
   readonly account: AccountService;
+  /** The Plugin Store and Skill Library. */
+  readonly store: StoreBrowser;
   /** The Ottili account in the editor's Accounts menu. */
   readonly authProvider: OttiliAuthenticationProvider;
   /** `@alran` in the editor's Chat view, where the editor has one. */
@@ -64,6 +67,7 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
   const changes = new ChangesTree(runtime);
   const agents = new AgentsTree(runtime);
   const capabilities = new CapabilitiesTree(runtime);
+  const store = new StoreBrowser(runtime, actions, documents);
   const accountTree = new AccountTree(runtime, account);
   account.onCredentialsChanged = () => actions.afterAccountChange();
   const chat = registerChatParticipant(runtime, context.extensionUri);
@@ -77,7 +81,7 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     focusAgents: async () => {
       await vscode.commands.executeCommand('alran.agents.focus');
     },
-  });
+  }, store);
   hub.pluginMentions = () => capabilities.pluginMentions();
 
   context.subscriptions.push(
@@ -90,6 +94,7 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     changes,
     agents,
     capabilities,
+    store,
     accountTree,
     auth.disposable,
     chat.disposable,
@@ -107,7 +112,7 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     vscode.languages.registerCodeActionsProvider({ scheme: 'file' }, new AlranCodeActions(), {
       providedCodeActionKinds: AlranCodeActions.kinds,
     }),
-    ...registerCommands({ runtime, actions, hub, account, sessions, changes, agents, capabilities }),
+    ...registerCommands({ runtime, actions, hub, account, sessions, changes, agents, capabilities, store }),
     new StatusBar(runtime, account),
     new AttentionNotifier(runtime, hub),
     createChangeWatcher(runtime),
@@ -136,6 +141,7 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     hub,
     actions,
     account,
+    store,
     authProvider: auth.provider,
     ...(chat.participant ? { chatParticipant: chat.participant } : {}),
     trees: { sessions, changes, agents, capabilities, account: accountTree },
@@ -406,7 +412,7 @@ function warnAboutOldCli(runtime: AlranRuntime, actions: AlranActions): vscode.D
     const update = 'Update Alran CLI';
     void vscode.window
       .showWarningMessage(
-        `Alran CLI ${connection.version} is older than this extension needs (${MIN_CLI_VERSION}). Sign-in, models, credit and billing need the update.`,
+        `Alran CLI ${connection.version} is older than this extension needs (${MIN_CLI_VERSION}). Sign-in, models, credit, billing and the Plugin Store need the update.`,
         update,
       )
       .then((choice) => {

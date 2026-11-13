@@ -26,7 +26,7 @@ export type HostMessage =
       readonly candidates: readonly MentionCandidate[];
     }
   | { readonly type: 'addAttachments'; readonly attachments: readonly ComposerAttachment[] }
-  | { readonly type: 'setDraft'; readonly text: string; readonly send?: boolean }
+  | { readonly type: 'setDraft'; readonly text: string; readonly send?: boolean; readonly menu?: boolean }
   | { readonly type: 'focusComposer' }
   | { readonly type: 'account'; readonly account: AccountView };
 

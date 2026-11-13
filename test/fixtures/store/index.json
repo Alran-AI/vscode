@@ -1,0 +1,120 @@
+{
+  "schema": "alran.store/v1",
+  "name": "Alran Test Store",
+  "description": "A tiny store for the extension's tests.",
+  "plugins": [
+    {
+      "name": "demo-skills",
+      "displayName": "Demo Skills",
+      "version": "1.0.0",
+      "description": "Three small skills for reading and releasing code.",
+      "author": "Alran test fixtures",
+      "category": "Code",
+      "license": "MIT",
+      "exampleQueries": [
+        "Give me a tour of this repository"
+      ],
+      "contents": {
+        "skills": [
+          {
+            "name": "changelog-check",
+            "description": "Use when checking that a change has a changelog entry and that the entry says what a user would notice."
+          },
+          {
+            "name": "code-tour",
+            "description": "Use when a newcomer needs a walk through an unfamiliar repository, covering entry points, data flow and where to read first."
+          },
+          {
+            "name": "release-notes",
+            "description": "Use when drafting release notes from the commits since the last tag, grouped by the changes a user would notice."
+          }
+        ],
+        "mcpServers": [],
+        "apps": [],
+        "hooks": 0
+      },
+      "archive": {
+        "url": "archives/plugin-demo-skills-1.0.0.zip",
+        "size": 2791,
+        "archiveSha256": "5d0b1d8795213e16144cfa9b5aac60dddad92b6f2f5d9972e218496480d68353",
+        "contentDigest": "sha256-tree-v1:22d9b21419d853259feef67dafeacbafae6b97a27e03e5dc987c516c76ede033"
+      }
+    },
+    {
+      "name": "hook-demo",
+      "displayName": "Hook Demo",
+      "version": "1.0.0",
+      "description": "One Skill and a session-start hook, used to test the approval step before a Plugin that runs commands is installed.",
+      "author": "Alran test fixtures",
+      "category": "Code",
+      "license": "MIT",
+      "exampleQueries": [
+        "Say hello from the demo plugin"
+      ],
+      "contents": {
+        "skills": [
+          {
+            "name": "hello",
+            "description": "Use when asked to say hello from the demo plugin, to check that the plugin and its hook are loaded."
+          }
+        ],
+        "mcpServers": [],
+        "apps": [],
+        "hooks": 1
+      },
+      "archive": {
+        "url": "archives/plugin-hook-demo-1.0.0.zip",
+        "size": 2162,
+        "archiveSha256": "c083170cbe11d4d7b6e2007f65b44c7aaf4da8b9a049f1deea0bbeb7c3b927d0",
+        "contentDigest": "sha256-tree-v1:738c86ca6be5bfb62f3c42ac04933cfef842f7a68db11fef7ee3a86ddf3d0f81"
+      }
+    }
+  ],
+  "skills": [
+    {
+      "name": "changelog-check",
+      "title": "Changelog Check",
+      "version": "1.0.0",
+      "description": "Use when checking that a change has a changelog entry and that the entry says what a user would notice.",
+      "group": "Demo skills",
+      "license": "MIT",
+      "files": 1,
+      "archive": {
+        "url": "archives/skill-changelog-check-1.0.0.zip",
+        "size": 567,
+        "archiveSha256": "8dcee9bfccfedf68c362c4af09a625bef56614594eef3b431a72a1fbca731d79",
+        "contentDigest": "sha256-tree-v1:1aae0f73ed805336c54962285658b0aa765611624fef6f53ca93c5a94e8f0203"
+      }
+    },
+    {
+      "name": "code-tour",
+      "title": "Code Tour",
+      "version": "1.0.0",
+      "description": "Use when a newcomer needs a walk through an unfamiliar repository, covering entry points, data flow and where to read first.",
+      "group": "Demo skills",
+      "license": "MIT",
+      "files": 1,
+      "archive": {
+        "url": "archives/skill-code-tour-1.0.0.zip",
+        "size": 597,
+        "archiveSha256": "9c7054c28680c5ad2e40eed74dcdf22f992ff29a4e2d7fbb35afa81c46ed9c14",
+        "contentDigest": "sha256-tree-v1:a82c3535f454ae42921e33baf185ddaeb477b6faf7cb81dfe2d8ae22ee9b2102"
+      }
+    },
+    {
+      "name": "release-notes",
+      "title": "Release Notes",
+      "version": "1.0.0",
+      "description": "Use when drafting release notes from the commits since the last tag, grouped by the changes a user would notice.",
+      "group": "Demo skills",
+      "license": "MIT",
+      "files": 1,
+      "archive": {
+        "url": "archives/skill-release-notes-1.0.0.zip",
+        "size": 581,
+        "archiveSha256": "c03c36787b25a99c914a9440df8d9c6e166c718a9eed769af50ddc35067ff213",
+        "contentDigest": "sha256-tree-v1:310ccbf3f02da3a476aefe4ef31bad14819b843adf3585f31cac97df4f07a272"
+      }
+    }
+  ]
+}

@@ -212,7 +212,7 @@ export class CapabilitiesTree extends RefreshableTree<CapabilityNode> {
       .map((plugin) => ({
         kind: 'plugin',
         label: plugin.displayName ?? plugin.name,
-        detail: `Plugin · ${plugin.marketplace ?? plugin.source ?? 'local'}`,
+        detail: `Plugin · ${plugin.marketplaceName ?? plugin.marketplace ?? plugin.source ?? 'local'}`,
         value: cli.pluginSelector(plugin),
       }));
   }

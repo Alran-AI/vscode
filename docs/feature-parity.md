@@ -9,7 +9,7 @@ The agent is always the Alran Code runtime (`alran acp`). This page records how 
 | **Native** | Implemented in the extension with the editor's own UI |
 | **TUI** | ACP offers no equivalent, so the current Session opens in the real TUI in an integrated terminal and reattaches when the terminal closes |
 
-`test/unit/commands.test.ts` fails if a public command in the TUI catalog has no route here.
+`test/unit/commands.test.ts` fails if a public command of the TUI has no route here. It reads a snapshot of the TUI's commands, `test/fixtures/tui-commands.json`; run `pnpm sync:tui` with an `alran-code` checkout next to this repository to refresh it (the test also checks the snapshot against that checkout when it is there).
 
 ## Slash commands
 
@@ -35,10 +35,11 @@ The agent is always the Alran Code runtime (`alran acp`). This page records how 
 | `/copy` | Native | Copies the last response |
 | `/tasks` | ACP, TUI | Agents view lists sub-agents; background Bash tasks need the TUI |
 | `/provider` | CLI | Capabilities view: list, add, remove, test, credential source, API key |
-| `/plugins` | CLI | Capabilities view: list, install, enable, disable, remove, refresh sources |
+| `/plugin`, `/plugins`, `/store` | CLI, Native | The Plugin Store in a Quick Pick: Plugins, Skill Library, Installed, Stores; install, update, switch on or off, remove, details, add or remove a store. A Plugin that runs commands is approved first. Also in the Capabilities view |
+| `/skills library [words]` | CLI, Native | The same Store, opened on the Skill Library and searched. `/skills` alone is answered by the agent |
 | `/login`, `/logout` | CLI | In the editor: `alran auth login` runs without a terminal (browser or device code), `alran auth logout` revokes the session; Accounts menu |
 | `/update`, `/mascot` | CLI | Integrated terminal; the agent reloads after an update |
-| `/reload` | Native | Restarts the agent and reattaches open Sessions |
+| `/reload` | Native | Restarts the agent and reattaches open Sessions; Skills and Plugins you installed load in new chats |
 | `/settings` | Native, TUI | Extension settings, `config.yaml`, or the TUI panel |
 | `/hotkeys` | Native | Editor keyboard shortcuts |
 | `/changelog` | Native, TUI | Opens the packaged changelog, or the TUI panel |
@@ -60,7 +61,9 @@ Skills appear as slash commands, as in the TUI. Built-in names take priority ove
 | `alran models` | CLI | Prices and availability in the model picker and the Account view |
 | `alran usage` | CLI | Credit and this month's spending in the Account view |
 | `alran billing` | CLI | Plan and payment method in the Account view; **Alran: Add Credit and Manage Billing** |
-| `alran provider …`, `alran plugin …` | CLI | Capabilities view |
+| `alran provider …` | CLI | Capabilities view |
+| `alran plugin search`, `info`, `install`, `update`, `remove`, `enable`, `disable`, `list`, `marketplace …` | CLI | Plugin Store, Capabilities view |
+| `alran skills list`, `search`, `info`, `install`, `update`, `remove` | CLI | Skill Library |
 | `alran telemetry status`, `preview` | CLI | Output channel |
 
 ## Other capabilities

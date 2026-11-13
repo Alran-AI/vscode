@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { AGENT_HANDLED_COMMANDS, type SlashInvocation } from '../shared/commands';
 import type { AlranActions } from './actions';
+import type { StoreBrowser } from './store';
 
 type Handler = (args: string) => Promise<void>;
 
@@ -15,6 +16,7 @@ export class SlashRouter {
   constructor(
     private readonly actions: AlranActions,
     private readonly views: { readonly focusCapabilities: () => Promise<void>; readonly focusAgents: () => Promise<void> },
+    private readonly store: Pick<StoreBrowser, 'open'>,
   ) {
     const { actions: a } = this;
     const tui = (command: string): Handler => (args) =>
@@ -57,7 +59,9 @@ export class SlashRouter {
         );
       },
       provider: () => this.views.focusCapabilities(),
-      plugins: () => this.views.focusCapabilities(),
+      plugin: (args) => this.store.open('plugins', args),
+      plugins: (args) => this.store.open('plugins', args),
+      store: (args) => this.store.open('plugins', args),
       login: () => a.login(),
       logout: () => a.logout(),
       update: () => a.update(),
@@ -93,6 +97,12 @@ export class SlashRouter {
 
   /** True when this command was handled here. */
   async dispatch(invocation: SlashInvocation): Promise<boolean> {
+    // `/skills` lists the active Skills (the agent answers); `/skills library` is the Store's Skill Library.
+    const library = /^library(?:\s+([\s\S]*))?$/iu.exec(invocation.args);
+    if (invocation.name === 'skills' && library) {
+      await this.actions.guarded(() => this.store.open('library', library[1]?.trim() ?? ''));
+      return true;
+    }
     if (AGENT_HANDLED_COMMANDS.has(invocation.name)) return false;
     const handler = this.handlers[invocation.name];
     if (!handler) return false;

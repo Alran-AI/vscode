@@ -176,8 +176,9 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
     this.deliver({ type: 'addAttachments', attachments });
   }
 
-  setDraft(text: string, send?: boolean): void {
-    this.deliver({ type: 'setDraft', text, ...(send ? { send: true } : {}) });
+  /** `menu` opens the slash or @ menu for the draft, as if it had been typed. */
+  setDraft(text: string, send?: boolean, menu?: boolean): void {
+    this.deliver({ type: 'setDraft', text, ...(send ? { send: true } : {}), ...(menu ? { menu: true } : {}) });
   }
 
   /** Delivers now, or as soon as a webview finishes loading after a focus request. */

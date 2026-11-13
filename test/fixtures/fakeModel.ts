@@ -1,5 +1,5 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -20,6 +20,21 @@ export interface Fixture {
   cleanup(): Promise<void>;
 }
 
+/** The test store: `test/fixtures/store/index.json` and its archives. */
+export const STORE_FIXTURE = path.resolve(process.cwd(), 'test', 'fixtures', 'store');
+
+/**
+ * A scratch directory. README shots name it (ALRAN_E2E_ROOT), so no random
+ * temp name shows up in a permission card; it must not exist or be empty.
+ */
+function createRoot(): string {
+  const named = process.env.ALRAN_E2E_ROOT;
+  if (!named) return mkdtempSync(path.join(tmpdir(), 'alran-vscode-test-'));
+  if (existsSync(named) && readdirSync(named).length > 0) throw new Error(`ALRAN_E2E_ROOT ${named} is not empty.`);
+  mkdirSync(named, { recursive: true });
+  return named;
+}
+
 export function findCli(): string | undefined {
   const candidates = [
     process.env.ALRAN_TEST_CLI,
@@ -31,16 +46,34 @@ export function findCli(): string | undefined {
 export async function createFixture(): Promise<Fixture> {
   const cliPath = findCli();
   if (!cliPath) throw new Error('Set ALRAN_TEST_CLI to a built Alran CLI.');
-  const root = mkdtempSync(path.join(tmpdir(), 'alran-vscode-test-'));
+  const root = createRoot();
   const dataDir = path.join(root, 'data');
-  const workspace = path.join(root, 'workspace');
-  const outsideDir = path.join(root, 'outside');
+  const workspace = path.join(root, 'billing-api');
+  const outsideDir = path.join(root, 'shared');
   const home = path.join(root, 'home');
   for (const directory of [dataDir, workspace, outsideDir, home]) mkdirSync(directory);
   writeFileSync(path.join(workspace, 'a.txt'), 'line one\nline two\nline three\n');
   mkdirSync(path.join(workspace, 'src'));
   writeFileSync(path.join(workspace, 'src', 'date.ts'), DEMO_SOURCE);
+  // A small, believable project around the demo file: what the Explorer and the README shots show.
+  mkdirSync(path.join(workspace, 'test'));
+  writeFileSync(
+    path.join(workspace, 'package.json'),
+    `${JSON.stringify({ name: 'billing-api', version: '1.4.0', private: true, type: 'module', scripts: { test: 'vitest run', build: 'tsc' } }, null, 2)}\n`,
+  );
+  writeFileSync(path.join(workspace, 'README.md'), '# billing-api\n\nInvoices, payment runs and the dates they depend on.\n');
+  writeFileSync(
+    path.join(workspace, 'src', 'invoice.ts'),
+    "import { formatDate, parseDate } from './date';\n\nexport function dueDate(issued: string, days: number): string {\n  const date = parseDate(issued);\n  date.setUTCDate(date.getUTCDate() + days);\n  return formatDate(date);\n}\n",
+  );
+  writeFileSync(
+    path.join(workspace, 'test', 'date.test.ts'),
+    "import { expect, it } from 'vitest';\nimport { parseDate } from '../src/date';\n\nit('parses an ISO date', () => {\n  expect(parseDate('2026-11-13').toISOString()).toBe('2026-11-13T00:00:00.000Z');\n});\n",
+  );
 
+  // README runs call the scripted provider something a reader would not take for a test.
+  const providerKey = process.env.ALRAN_E2E_PROVIDER || 'fixture';
+  const modelId = providerKey === 'fixture' ? 'fixture' : 'local-model';
   const requests: string[] = [];
   const server = createServer((request, response) => {
     let raw = '';
@@ -62,18 +95,18 @@ export async function createFixture(): Promise<Fixture> {
   writeFileSync(
     path.join(dataDir, 'config.yaml'),
     JSON.stringify({
-      defaultModel: 'custom_provider:fixture/fixture',
+      defaultModel: `custom_provider:${providerKey}/${modelId}`,
       permission: { mode: 'default' },
       // Programmatic Tool Calling is opt-in; the run_code test needs it.
       beta: { ptc: true },
       custom_provider: {
-        fixture: {
-          name: 'fixture',
+        [providerKey]: {
+          name: providerKey === 'fixture' ? 'fixture' : 'Local model',
           kind: 'custom',
           enabled: true,
           api: 'openai-completions',
           options: { apiKey: 'synthetic-key', baseURL: `${origin}/v1`, authMode: 'api-key' },
-          models: { fixture: { limit: { context: 32768, output: 4096 } } },
+          models: { [modelId]: { limit: { context: 32768, output: 4096 } } },
         },
       },
     }),
@@ -88,6 +121,8 @@ export async function createFixture(): Promise<Fixture> {
     MAVIS_DATA_DIR: dataDir,
     ALRAN_TEST_ALLOWED_ORIGIN: origin,
     ALRAN_DISABLE_TELEMETRY: '1',
+    // A tiny offline store (two Plugins, three Skills), so no test asks the network for one.
+    ALRAN_STORE_URL: process.env.ALRAN_E2E_STORE || STORE_FIXTURE,
   };
   return {
     cliPath,
@@ -208,7 +243,9 @@ async function respond(
     return;
   }
   if (last?.role === 'tool' && /permission denied/iu.test(text)) {
-    await say('Understood, I left the shared folder alone. The change stays in the workspace.');
+    await say(
+      'Understood, I left the shared folder alone. The change stays in the workspace.',
+    );
   } else if (last?.role === 'tool') {
     await say(`Tool done: ${stripReminder(text).slice(0, 48)}`);
   } else if (text.includes('<questionnaire-response>') || text.includes('Q: ')) {
@@ -217,6 +254,11 @@ async function respond(
     callTool('edit', { file_path: file('a.txt'), old_string: 'line two', new_string: 'line TWO' });
   } else if (text.includes('DO_WRITE')) {
     callTool('write', { path: file('created.txt'), content: 'brand new\n' });
+  } else if (/release notes to the shared folder/iu.test(text)) {
+    callTool('write', {
+      path: path.join(paths.outsideDir, 'RELEASE_NOTES.md'),
+      content: '# billing-api 1.4.0\n\n- parseDate rejects invalid dates\n',
+    });
   } else if (text.includes('DO_OUTSIDE') || text.includes('shared folder')) {
     callTool('write', { path: path.join(paths.outsideDir, 'guarded.txt'), content: 'outside\n' });
   } else if (text.includes('DO_RUNCODE')) {
@@ -257,12 +299,18 @@ const DEMO_OLD = `export function parseDate(input: string): Date {
   return new Date(input);
 }`;
 
-const DEMO_NEW = `export function parseDate(input: string): Date {
-  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(input.trim());
-  if (!match) throw new RangeError(\`Expected YYYY-MM-DD, got "\${input}"\`);
+const DEMO_NEW = `const ISO_DATE = /^(\\d{4})-(\\d{2})-(\\d{2})$/;
+
+export function parseDate(input: string): Date {
+  const match = ISO_DATE.exec(input.trim());
+  if (!match) {
+    throw new RangeError(\`Expected YYYY-MM-DD: \${input}\`);
+  }
   const [, year, month, day] = match.map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCMonth() !== month - 1) throw new RangeError(\`No such date: \${input}\`);
+  if (date.getUTCMonth() !== month - 1) {
+    throw new RangeError(\`No such date: \${input}\`);
+  }
   return date;
 }`;
 

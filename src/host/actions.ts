@@ -675,7 +675,7 @@ export class AlranActions {
   async restartAgent(): Promise<void> {
     await this.runtime.manager.restart();
     if (!this.runtime.manager.active) await this.runtime.ensureSession();
-    this.notify('Configuration and Plugins reloaded.');
+    this.notify('Agent restarted. New chats load Plugins and Skills you installed.');
   }
 
   private dataDir(): string {

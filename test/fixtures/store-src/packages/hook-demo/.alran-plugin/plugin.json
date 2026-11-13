@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "name": "hook-demo",
+  "version": "1.0.0",
+  "displayName": "Hook Demo",
+  "description": "One Skill and a session-start hook, used to test the approval step before a Plugin that runs commands is installed.",
+  "author": "Alran test fixtures",
+  "category": "Code",
+  "exampleQueries": [
+    "Say hello from the demo plugin"
+  ],
+  "apps": [],
+  "mcpServers": [],
+  "skills": [
+    "skills/hello/SKILL.md"
+  ],
+  "hooks": [
+    "hooks/hooks.json"
+  ],
+  "icon": "icon.png"
+}

@@ -131,7 +131,7 @@ function runCliOnce(
   });
 }
 
-async function runChecked(
+export async function runChecked(
   context: CliContext,
   args: readonly string[],
   options?: Parameters<typeof runCli>[2],
@@ -141,7 +141,7 @@ async function runChecked(
   return result.stdout;
 }
 
-async function runJson<T>(
+export async function runJson<T>(
   context: CliContext,
   args: readonly string[],
   options?: Parameters<typeof runCli>[2],
@@ -231,11 +231,16 @@ export interface PluginInfo {
   readonly name: string;
   readonly displayName?: string;
   readonly description?: string;
+  /** `plugin list --json` names the store it came from `marketplaceName`. */
+  readonly marketplaceName?: string;
   readonly marketplace?: string;
   readonly source?: string;
   readonly version?: string;
   readonly enabled?: boolean;
   readonly installed?: boolean;
+  readonly author?: string;
+  /** Counts of what the Plugin contains, as `plugin list --json` reports them. */
+  readonly capabilities?: { readonly skillCount?: number; readonly mcpServerCount?: number; readonly appCount?: number };
 }
 
 export interface PluginList {
@@ -282,7 +287,7 @@ export const telemetry = {
 
 export function pluginSelector(plugin: PluginInfo): string {
   const id = plugin.id ?? plugin.pluginId ?? plugin.name;
-  const source = plugin.marketplace ?? plugin.source;
+  const source = plugin.marketplaceName ?? plugin.marketplace ?? plugin.source;
   return id.includes('@') || !source ? id : `${id}@${source}`;
 }
 

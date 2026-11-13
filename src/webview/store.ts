@@ -69,7 +69,7 @@ export function useChatState(): ChatState {
 
 export interface ComposerEvents {
   addAttachments?(attachments: readonly ComposerAttachment[]): void;
-  setDraft?(text: string, send?: boolean): void;
+  setDraft?(text: string, send?: boolean, menu?: boolean): void;
   focus?(): void;
   mentions?(requestId: number, candidates: readonly MentionCandidate[]): void;
 }
@@ -122,7 +122,7 @@ export function handleHostMessage(message: HostMessage): void {
       composerEvents.addAttachments?.(message.attachments);
       break;
     case 'setDraft':
-      composerEvents.setDraft?.(message.text, message.send);
+      composerEvents.setDraft?.(message.text, message.send, message.menu);
       break;
     case 'focusComposer':
       composerEvents.focus?.();
