@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import path from 'node:path';
 
 import type * as acp from '@agentclientprotocol/sdk';
 import * as vscode from 'vscode';
@@ -197,6 +198,12 @@ export class AlranRuntime implements vscode.Disposable {
       env: env as Record<string, string>,
       iconPath: new vscode.ThemeIcon('sparkle'),
     };
+  }
+
+  /** Alran's data directory (`ALRAN_DATA_DIR`, else `~/.alran`). */
+  dataDir(): string {
+    const env = this.configuration.get<Record<string, string>>('env', {});
+    return env.ALRAN_DATA_DIR || process.env.ALRAN_DATA_DIR || path.join(homedir(), '.alran');
   }
 
   defaultCwd(): string {

@@ -1049,3 +1049,158 @@ kbd {
   font-size: 11px;
   opacity: 0.7;
 }
+
+/* Failure cards */
+
+.failure-card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--error);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+}
+
+.failure-card .failure-title .codicon {
+  color: var(--error);
+}
+
+.failure-card.kind-model-restricted,
+.failure-card.kind-credits,
+.failure-card.kind-rate-limit,
+.failure-card.kind-auth,
+.failure-card.kind-context-limit,
+.failure-card.kind-output-limit {
+  border-left-color: var(--warning);
+}
+
+.failure-card.kind-model-restricted .failure-title .codicon,
+.failure-card.kind-credits .failure-title .codicon,
+.failure-card.kind-rate-limit .failure-title .codicon,
+.failure-card.kind-auth .failure-title .codicon,
+.failure-card.kind-context-limit .failure-title .codicon,
+.failure-card.kind-output-limit .failure-title .codicon {
+  color: var(--warning);
+}
+
+.failure-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.failure-detail {
+  color: var(--vscode-foreground);
+  line-height: 1.4;
+}
+
+.failure-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.button.small {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.button.wide {
+  justify-content: center;
+  width: 100%;
+}
+
+.failure-raw {
+  font-size: 12px;
+  color: var(--subtle);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.failure-raw .tool-pre {
+  width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Sign-in and welcome */
+
+.signin-options {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(260px, 100%);
+  margin-top: 6px;
+}
+
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  color: var(--subtle);
+}
+
+.welcome-mark .codicon {
+  font-size: 28px;
+  color: var(--vscode-textLink-foreground);
+}
+
+.welcome h2 {
+  font-size: 1.25em;
+  font-weight: 600;
+}
+
+.account-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--subtle);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+button.account-line:hover {
+  background: var(--hover);
+  color: var(--vscode-foreground);
+}
+
+.account-line.low .account-credit {
+  color: var(--warning);
+}
+
+.startup-detail {
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+}
+
+.startup-detail summary {
+  cursor: pointer;
+  color: var(--subtle);
+}
+
+.startup-detail .tool-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.composer-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

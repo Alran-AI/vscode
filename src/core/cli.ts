@@ -2,12 +2,6 @@ import { spawn } from 'node:child_process';
 
 import { spawnCommand, type ResolvedCli } from '../acp/binary';
 
-export interface CliResult {
-  readonly code: number | null;
-  readonly stdout: string;
-  readonly stderr: string;
-}
-
 export interface CliContext {
   readonly cli: ResolvedCli;
   readonly cwd: string;
@@ -15,43 +9,124 @@ export interface CliContext {
   readonly globalArgs?: readonly string[];
 }
 
+/** What a failed `alran` subcommand means, from the exit codes of the account commands. */
+export type CliFailureKind = 'auth' | 'rate-limit' | 'offline' | 'credits' | 'timeout' | 'error';
+
+const EXIT_KINDS: Readonly<Record<number, CliFailureKind>> = {
+  2: 'auth',
+  3: 'rate-limit',
+  4: 'offline',
+  5: 'credits',
+};
+
 export class AlranCliError extends Error {
+  readonly kind: CliFailureKind;
+
   constructor(
     message: string,
     readonly result: CliResult,
   ) {
     super(message);
     this.name = 'AlranCliError';
+    this.kind = result.timedOut ? 'timeout' : (EXIT_KINDS[result.code ?? -1] ?? 'error');
   }
 }
 
-/** Runs one non-interactive `alran` subcommand and collects its output. */
-export function runCli(
+export interface CliResult {
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly timedOut?: boolean;
+}
+
+/**
+ * The person-facing part of a failed command's output: the CLI's own message,
+ * without the weekly update hint, Node warnings, or stack traces.
+ */
+export function cliFailureMessage(result: CliResult, args: readonly string[]): string {
+  if (result.timedOut) return `\`alran ${args.join(' ')}\` did not finish in time.`;
+  const lines = `${result.stderr}\n${result.stdout}`
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(
+      (line) =>
+        line &&
+        !/^\(node:\d+\)/u.test(line) &&
+        !/^\(Use `node --trace/u.test(line) &&
+        !/^at\s/u.test(line) &&
+        !/update available|alran update|npm install -g alran/iu.test(line),
+    );
+  const message = lines.slice(0, 4).join(' ');
+  return message || `\`alran ${args.join(' ')}\` failed (exit code ${String(result.code)}).`;
+}
+
+/**
+ * Concurrent first runs on a fresh data directory race on the runtime's
+ * database migration ("migration_failed … duplicate column"); a moment later
+ * the same command succeeds.
+ */
+export function isTransientStorageFailure(text: string): boolean {
+  return /migration_failed|duplicate column name|SQLITE_BUSY|database is locked/iu.test(text);
+}
+
+/** Runs one non-interactive `alran` subcommand, retrying a transient storage race. */
+export async function runCli(
   context: CliContext,
   args: readonly string[],
-  options: { readonly env?: NodeJS.ProcessEnv; readonly timeoutMs?: number } = {},
+  options: {
+    readonly env?: NodeJS.ProcessEnv;
+    readonly timeoutMs?: number;
+    readonly input?: string;
+  } = {},
+): Promise<CliResult> {
+  for (let attempt = 1; ; attempt += 1) {
+    const result = await runCliOnce(context, args, options);
+    if (result.code === 0 || attempt >= 4 || !isTransientStorageFailure(result.stderr)) return result;
+    await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+  }
+}
+
+function runCliOnce(
+  context: CliContext,
+  args: readonly string[],
+  options: {
+    readonly env?: NodeJS.ProcessEnv;
+    readonly timeoutMs?: number;
+    /** Written to stdin, which is otherwise closed. */
+    readonly input?: string;
+  } = {},
 ): Promise<CliResult> {
   const spec = spawnCommand(context.cli, [...(context.globalArgs ?? []), ...args]);
   return new Promise((resolve, reject) => {
     const child = spawn(spec.command, [...spec.args], {
       cwd: context.cwd,
-      env: { ...context.env, ...options.env },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // The account commands print their weekly update hint on stderr; the
+      // extension reads the version from the agent instead.
+      env: { ...context.env, ALRAN_NO_UPDATE_CHECK: '1', NO_COLOR: '1', ...options.env },
+      stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       windowsHide: true,
       windowsVerbatimArguments: spec.windowsVerbatim === true,
     });
     let stdout = '';
     let stderr = '';
-    const timer = setTimeout(() => child.kill('SIGTERM'), options.timeoutMs ?? 60_000);
-    child.stdout.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
-    child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, options.timeoutMs ?? 60_000);
+    if (options.input !== undefined && child.stdin) {
+      child.stdin.on('error', () => undefined);
+      child.stdin.end(options.input);
+    }
+    child.stdout?.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
+    child.stderr?.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
     child.once('error', (error) => {
       clearTimeout(timer);
       reject(error);
     });
     child.once('close', (code) => {
       clearTimeout(timer);
-      resolve({ code, stdout, stderr });
+      resolve({ code, stdout, stderr, ...(timedOut ? { timedOut } : {}) });
     });
   });
 }
@@ -62,12 +137,7 @@ async function runChecked(
   options?: Parameters<typeof runCli>[2],
 ): Promise<string> {
   const result = await runCli(context, args, options);
-  if (result.code !== 0) {
-    throw new AlranCliError(
-      (result.stderr || result.stdout).trim() || `alran ${args.join(' ')} failed.`,
-      result,
-    );
-  }
+  if (result.code !== 0) throw new AlranCliError(cliFailureMessage(result, args), result);
   return result.stdout;
 }
 
@@ -76,7 +146,15 @@ async function runJson<T>(
   args: readonly string[],
   options?: Parameters<typeof runCli>[2],
 ): Promise<T> {
-  return JSON.parse(await runChecked(context, [...args, '--json'], options)) as T;
+  const stdout = await runChecked(context, [...args, '--json'], options);
+  try {
+    return JSON.parse(stdout) as T;
+  } catch {
+    throw new AlranCliError(
+      `\`alran ${args.join(' ')} --json\` printed no JSON. The installed CLI may be too old for this extension; run "Alran: Update Alran CLI".`,
+      { code: 0, stdout, stderr: '' },
+    );
+  }
 }
 
 export interface ProviderInfo {
@@ -87,6 +165,7 @@ export interface ProviderInfo {
   readonly enabled: boolean;
   readonly readOnly: boolean;
   readonly hasApiKey: boolean;
+  readonly maskedApiKey?: string;
   readonly models: readonly (string | { readonly id?: string; readonly modelId?: string })[];
 }
 

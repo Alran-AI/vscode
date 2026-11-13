@@ -1,6 +1,7 @@
 import { memo } from 'preact/compat';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
+import type { FailureAction, FailureView } from '../../shared/errors';
 import { describeTool, isRecord } from '../../shared/model';
 import type {
   NoticeItem,
@@ -340,7 +341,70 @@ function PlanCard({ item }: { readonly item: PlanItem }) {
   );
 }
 
+const ACTION_LABELS: Readonly<Record<FailureAction, readonly [string, string]>> = {
+  retry: ['Try again', 'refresh'],
+  'sign-in': ['Sign in', 'account'],
+  'add-credits': ['Add credit', 'credit-card'],
+  'show-usage': ['Show usage', 'graph'],
+  'switch-model': ['Choose another model', 'hubot'],
+  'use-werk': ['Switch to Ottili Werk', 'sparkle'],
+  'provider-settings': ['Provider settings', 'server'],
+  compact: ['Compact conversation', 'fold'],
+  'new-session': ['New session', 'add'],
+  'show-logs': ['Show logs', 'output'],
+};
+
+function FailureCard({ item, failure }: { readonly item: NoticeItem; readonly failure: FailureView }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const [primary, ...secondary] = failure.actions;
+  const button = (action: FailureAction, primaryButton: boolean) => {
+    const [label, icon] = ACTION_LABELS[action];
+    return (
+      <button
+        key={action}
+        class={primaryButton ? 'button primary small' : 'button small'}
+        onClick={() =>
+          action === 'sign-in'
+            ? post({ type: 'signIn' })
+            : post({ type: 'failureAction', action })
+        }
+      >
+        <Icon name={icon} /> {label}
+      </button>
+    );
+  };
+  return (
+    <div class={`failure-card kind-${failure.kind}`} role="alert">
+      <div class="failure-title">
+        <Icon name={failure.kind === 'auth' ? 'account' : failure.kind === 'model-restricted' || failure.kind === 'credits' ? 'credit-card' : failure.kind === 'network' ? 'plug' : 'error'} />
+        <span>{failure.title}</span>
+      </div>
+      {failure.detail ? <div class="failure-detail">{failure.detail}</div> : null}
+      {failure.actions.length > 0 ? (
+        <div class="failure-actions">
+          {primary ? button(primary, true) : null}
+          {secondary.map((action) => button(action, false))}
+        </div>
+      ) : null}
+      {item.text && item.text !== failure.title ? (
+        <div class="failure-raw">
+          <button class="link-button" onClick={() => setShowRaw(!showRaw)} aria-expanded={showRaw}>
+            {showRaw ? 'Hide details' : 'Details'}
+          </button>
+          {showRaw ? (
+            <>
+              <pre class="tool-pre">{item.text}</pre>
+              <button class="link-button" onClick={() => post({ type: 'copy', text: item.text })}>Copy</button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function Notice({ item }: { readonly item: NoticeItem }) {
+  if (item.failure) return <FailureCard item={item} failure={item.failure} />;
   const icon = item.level === 'error' ? 'error' : item.level === 'warning' ? 'warning' : 'info';
   return (
     <div class={`notice ${item.level}`}>

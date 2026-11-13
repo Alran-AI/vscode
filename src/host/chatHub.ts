@@ -6,6 +6,8 @@ import * as vscode from 'vscode';
 import { parseSlash } from '../shared/commands';
 import type { HostMessage, QueueOperation, GoalOperation, WebviewMessage } from '../shared/protocol';
 import type { ComposerAttachment, MentionCandidate, TranscriptItem } from '../shared/types';
+import type { FailureAction } from '../shared/errors';
+import type { AccountService } from './account';
 import type { AlranActions } from './actions';
 import { attachmentsFromUris, fileAttachment, findFileMentions, relativeLabel } from './context';
 import { openPermissionPreview, openToolDiff } from './diff';
@@ -28,9 +30,12 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly pendingItems = new Map<string, TranscriptItem>();
   private flushTimer: NodeJS.Timeout | undefined;
   private sidebar: vscode.WebviewView | undefined;
+  private readonly panels = new Set<vscode.WebviewPanel>();
   private queuedOutbound: HostMessage[] = [];
   actions!: AlranActions;
   router!: SlashRouter;
+  private accountListener: vscode.Disposable | undefined;
+  private accountService: AccountService | undefined;
   pluginMentions: () => readonly MentionCandidate[] = () => [];
 
   constructor(private readonly runtime: AlranRuntime) {
@@ -59,10 +64,16 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
     );
   }
 
+  set account(service: AccountService) {
+    this.accountService = service;
+    this.accountListener?.dispose();
+    this.accountListener = service.onDidChange(() => this.broadcast({ type: 'account', account: service.view }));
+  }
+
   resolveWebviewView(view: vscode.WebviewView): void {
     this.sidebar = view;
     view.webview.options = this.webviewOptions();
-    const surface = this.attach(view.webview);
+    const surface = this.attach(view.webview, 'sidebar');
     view.onDidDispose(() => {
       this.surfaces.delete(surface);
       if (this.sidebar === view) this.sidebar = undefined;
@@ -77,8 +88,12 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
       { ...this.webviewOptions(), retainContextWhenHidden: true, enableFindWidget: true },
     );
     panel.iconPath = vscode.Uri.joinPath(this.runtime.extensionUri, 'media', 'icon.png');
-    const surface = this.attach(panel.webview);
-    panel.onDidDispose(() => this.surfaces.delete(surface));
+    const surface = this.attach(panel.webview, 'panel');
+    this.panels.add(panel);
+    panel.onDidDispose(() => {
+      this.surfaces.delete(surface);
+      this.panels.delete(panel);
+    });
   }
 
   private webviewOptions(): vscode.WebviewOptions {
@@ -88,17 +103,17 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
     };
   }
 
-  private attach(webview: vscode.Webview): ChatSurface {
+  private attach(webview: vscode.Webview, kind: 'sidebar' | 'panel'): ChatSurface {
     const surface: ChatSurface = { webview, ready: false };
     this.surfaces.add(surface);
-    webview.html = this.renderHtml(webview);
+    webview.html = this.renderHtml(webview, kind);
     webview.onDidReceiveMessage((message: WebviewMessage) => {
       void this.handle(surface, message);
     });
     return surface;
   }
 
-  private renderHtml(webview: vscode.Webview): string {
+  private renderHtml(webview: vscode.Webview, kind: 'sidebar' | 'panel'): string {
     const nonce = randomBytes(16).toString('base64');
     const asset = (file: string) =>
       webview.asWebviewUri(vscode.Uri.joinPath(this.runtime.extensionUri, 'dist', 'webview', file));
@@ -118,7 +133,7 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
 <link rel="stylesheet" href="${asset('main.css').toString()}" />
 <title>Alran Code</title>
 </head>
-<body>
+<body data-surface="${kind}">
 <div id="app"></div>
 <script nonce="${nonce}" src="${asset('main.js').toString()}"></script>
 </body>
@@ -171,14 +186,17 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
     else this.queuedOutbound.push(message);
   }
 
+  /** Brings a chat forward: a visible chat editor tab if there is one, else the side bar. */
   async focus(): Promise<void> {
-    if (this.sidebar) this.sidebar.show(true);
+    const panel = [...this.panels].find((candidate) => candidate.visible);
+    if (panel) panel.reveal(panel.viewColumn, false);
+    else if (this.sidebar) this.sidebar.show(true);
     else await vscode.commands.executeCommand('alran.chat.focus');
     this.broadcast({ type: 'focusComposer' });
   }
 
   get isVisible(): boolean {
-    return this.sidebar?.visible === true;
+    return this.sidebar?.visible === true || [...this.panels].some((panel) => panel.visible);
   }
 
   setBadge(count: number): void {
@@ -204,6 +222,7 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
     this.post(surface, { type: 'snapshot', snapshot: manager.active?.snapshot ?? null });
     const label = this.activeFileLabel();
     this.post(surface, { type: 'activeFile', ...(label ? { label } : {}) });
+    if (this.accountService) this.post(surface, { type: 'account', account: this.accountService.view });
     for (const message of this.queuedOutbound.splice(0)) this.post(surface, message);
     if (this.runtime.configuration.get('autoConnect', true)) {
       // Startup failures are shown by the connection card in the webview.
@@ -332,13 +351,56 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
         await actions.openSession(message.sessionId, session?.meta.cwd ?? this.runtime.defaultCwd());
         break;
       case 'signIn':
-        await actions.login();
+        if (message.method === 'options') await this.accountService?.signInOptions();
+        else if (message.method === 'api-key') await this.accountService?.signInWithApiKey();
+        else if (message.method === 'provider') await vscode.commands.executeCommand('alran.providerAdd');
+        else await actions.login();
+        break;
+      case 'failureAction':
+        await this.runFailureAction(message.action);
         break;
       case 'command':
         // The transcript renders model output, so the webview only reaches our own commands.
         if (message.command.startsWith('alran.')) {
           await vscode.commands.executeCommand(message.command, ...(message.args ?? []));
         }
+        break;
+    }
+  }
+
+  private async runFailureAction(action: FailureAction): Promise<void> {
+    const { actions } = this;
+    switch (action) {
+      case 'retry':
+        await actions.retry();
+        break;
+      case 'sign-in':
+        await actions.login();
+        break;
+      case 'add-credits':
+        await this.accountService?.openBilling();
+        break;
+      case 'show-usage':
+        await vscode.commands.executeCommand('alran.account.focus');
+        await this.accountService?.refresh({ usage: true });
+        break;
+      case 'switch-model':
+        await actions.pickModel();
+        break;
+      case 'use-werk':
+        await actions.useWerk();
+        break;
+      case 'provider-settings':
+        await vscode.commands.executeCommand('alran.capabilities.focus');
+        break;
+      case 'compact':
+        await actions.agentCommand('compact');
+        break;
+      case 'new-session':
+        await actions.newSession();
+        break;
+      case 'show-logs':
+        this.runtime.output.show();
         break;
     }
   }
@@ -429,6 +491,7 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
 
   dispose(): void {
     clearTimeout(this.flushTimer);
+    this.accountListener?.dispose();
     for (const disposable of this.disposables) disposable.dispose();
   }
 }

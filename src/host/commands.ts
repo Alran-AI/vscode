@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 
 import * as cli from '../core/cli';
+import { describeFailure } from '../shared/errors';
 import type { ComposerAttachment } from '../shared/types';
+import type { AccountService } from './account';
 import type { AlranActions } from './actions';
 import type { ChatHub } from './chatHub';
 import {
@@ -19,16 +21,23 @@ export interface CommandDependencies {
   readonly runtime: AlranRuntime;
   readonly actions: AlranActions;
   readonly hub: ChatHub;
+  readonly account: AccountService;
   readonly sessions: SessionsTree;
   readonly changes: ChangesTree;
   readonly agents: AgentsTree;
   readonly capabilities: CapabilitiesTree;
 }
 
-const API_FORMATS = ['anthropic-messages', 'openai-completions', 'openai-responses', 'google-generative-ai'];
+const API_FORMATS = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai'];
+const API_FORMAT_HINTS: Readonly<Record<string, string>> = {
+  'openai-completions': 'OpenAI-compatible /chat/completions (most providers, vLLM, Ollama)',
+  'openai-responses': 'OpenAI Responses API',
+  'anthropic-messages': 'Anthropic Messages API',
+  'google-generative-ai': 'Google Gemini API',
+};
 
 export function registerCommands(deps: CommandDependencies): vscode.Disposable[] {
-  const { runtime, actions, hub, sessions, changes, agents, capabilities } = deps;
+  const { runtime, actions, hub, account, sessions, changes, agents, capabilities } = deps;
 
   const addToChat = async (attachments: readonly ComposerAttachment[]) => {
     await hub.focus();
@@ -93,7 +102,18 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
     'alran.copyLastResponse': () => actions.copyLastResponse(),
 
     // Controls
-    'alran.pickModel': () => actions.pickConfig('model'),
+    'alran.pickModel': (sessionId?: string) => {
+      if (typeof sessionId === 'string' && runtime.manager.sessions.has(sessionId)) runtime.manager.setActive(sessionId);
+      return actions.pickModel();
+    },
+    'alran.useWerk': (sessionId?: string) => actions.useWerk(typeof sessionId === 'string' ? sessionId : undefined),
+    'alran.answerPermission': (sessionId: string, itemId: string, optionId: string) => {
+      runtime.manager.sessions.get(sessionId)?.answerPermission(itemId, optionId);
+    },
+    'alran.showSession': async (sessionId: string) => {
+      if (runtime.manager.sessions.has(sessionId)) runtime.manager.setActive(sessionId);
+      await hub.focus();
+    },
     'alran.pickEffort': () => actions.pickConfig('thinkingEffort'),
     'alran.pickPermissionMode': () => actions.pickConfig('permissionMode'),
     'alran.togglePlanMode': () => actions.cycleMode(),
@@ -231,41 +251,71 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
       refreshCapabilities();
     },
     'alran.providerAdd': async () => {
-      const name = await vscode.window.showInputBox({ title: 'Add provider (1/4)', prompt: 'Display name' });
+      const title = 'Add a model provider';
+      const name = await vscode.window.showInputBox({
+        title: `${title} (1/5)`,
+        prompt: 'Display name, for example "OpenRouter" or "My vLLM"',
+        ignoreFocusOut: true,
+        validateInput: (value) => (value.trim() ? undefined : 'Enter a name.'),
+      });
       if (!name?.trim()) return;
       const baseUrl = await vscode.window.showInputBox({
-        title: 'Add provider (2/4)',
+        title: `${title} (2/5)`,
         prompt: 'API base URL',
         placeHolder: 'https://api.example.com/v1',
+        ignoreFocusOut: true,
+        validateInput: (value) => {
+          try {
+            const url = new URL(value.trim());
+            return url.protocol === 'https:' || url.protocol === 'http:' ? undefined : 'Use an http(s) URL.';
+          } catch {
+            return 'Enter a full URL, for example https://api.example.com/v1.';
+          }
+        },
       });
       if (!baseUrl?.trim()) return;
-      const apiFormat = await vscode.window.showQuickPick(API_FORMATS, {
-        title: 'Add provider (3/4)',
-        placeHolder: 'API format',
-      });
-      if (!apiFormat) return;
+      const format = await vscode.window.showQuickPick(
+        API_FORMATS.map((value) => ({ label: value, description: API_FORMAT_HINTS[value] ?? '' })),
+        { title: `${title} (3/5)`, placeHolder: 'Which API does the provider speak?', ignoreFocusOut: true },
+      );
+      if (!format) return;
       const models = await vscode.window.showInputBox({
-        title: 'Add provider (4/4)',
+        title: `${title} (4/5)`,
         prompt: 'Model IDs, separated by commas',
+        placeHolder: 'gpt-5.1, my-model',
+        ignoreFocusOut: true,
+        validateInput: (value) => (value.split(',').some((model) => model.trim()) ? undefined : 'Enter at least one model ID.'),
       });
       if (!models?.trim()) return;
       const apiKey = await vscode.window.showInputBox({
-        title: 'API key',
-        prompt: 'Leave empty for providers that need no key',
+        title: `${title} (5/5)`,
+        prompt: 'API key (leave empty for providers that need none). It is handed to the CLI, which stores it.',
         password: true,
+        ignoreFocusOut: true,
       });
       if (apiKey === undefined) return;
-      await withProgress(`Adding ${name}…`, async () => {
+      const use = await vscode.window.showQuickPick(
+        [
+          { label: 'Test it and make it the default', description: 'Recommended', use: true },
+          { label: 'Only add it', use: false },
+        ],
+        { title, placeHolder: 'Use this provider for new sessions?', ignoreFocusOut: true },
+      );
+      if (!use) return;
+      await withProgress(`Adding ${name.trim()}${use.use ? ' and testing it' : ''}…`, async () => {
         await cli.providers.add(await runtime.cliContext(), {
           name: name.trim(),
           baseUrl: baseUrl.trim(),
-          apiFormat,
+          apiFormat: format.label,
           models: models.split(',').map((model) => model.trim()).filter(Boolean),
           ...(apiKey ? { apiKey } : {}),
+          ...(use.use ? { use: true } : {}),
         });
       });
       refreshCapabilities();
-      await actions.restartAgent();
+      void account.refresh();
+      void vscode.window.showInformationMessage(`${name.trim()} was added.`);
+      await actions.afterAccountChange();
     },
     'alran.providerRemove': async (node: CapabilityNode) => {
       if (node.kind !== 'provider') return;
@@ -276,45 +326,64 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
         confirm,
       );
       if (choice !== confirm) return;
-      await cli.providers.remove(await runtime.cliContext(), node.provider.providerId);
+      await withProgress(`Removing ${node.provider.name}…`, async () => {
+        await cli.providers.remove(await runtime.cliContext(), node.provider.providerId);
+      });
       refreshCapabilities();
-      await actions.restartAgent();
+      void account.refresh();
+      await actions.afterAccountChange();
     },
     'alran.providerTest': async (node: CapabilityNode) => {
       if (node.kind !== 'provider') return;
-      const result = await cli.providers.test(await runtime.cliContext(), node.provider.providerId);
-      runtime.output.info(result.stdout);
-      if (result.code === 0) void vscode.window.showInformationMessage(`${node.provider.name} responded.`);
-      else void vscode.window.showErrorMessage(`${node.provider.name}: ${(result.stderr || result.stdout).trim()}`);
+      const result = await vscode.window.withProgress(
+        { location: { viewId: 'alran.capabilities' }, title: `Testing ${node.provider.name}…` },
+        async () => cli.providers.test(await runtime.cliContext(), node.provider.providerId),
+      );
+      runtime.output.info(`provider test ${node.provider.providerId}: ${result.stdout.trim()} ${result.stderr.trim()}`);
+      if (result.code === 0) void vscode.window.showInformationMessage(`${node.provider.name} answered. It works.`);
+      else {
+        const failure = describeFailure(cli.cliFailureMessage(result, ['provider', 'test']));
+        void vscode.window.showErrorMessage(
+          `${node.provider.name} did not answer: ${failure.title}.${failure.detail ? ` ${failure.detail}` : ''}`,
+          'Show Logs',
+        ).then((choice) => {
+          if (choice) runtime.output.show();
+        });
+      }
     },
     'alran.providerUseSource': async () => {
       const picked = await vscode.window.showQuickPick(
         [
-          { label: 'Token Plan', value: 'token-plan' as const },
-          { label: 'Alran API key', value: 'api-key' as const },
+          { label: '$(account) Ottili account', detail: 'Model calls use your signed-in Ottili session.', value: 'token-plan' as const },
+          { label: '$(key) Ottili API key', detail: 'Model calls use the saved Ottili API key and its project.', value: 'api-key' as const },
         ],
-        { placeHolder: 'Alran credential source' },
+        { title: 'Ottili credentials', placeHolder: 'What should Alran use for Ottili models?' },
       );
       if (!picked) return;
       await cli.providers.use(await runtime.cliContext(), picked.value);
       refreshCapabilities();
-      await actions.restartAgent();
+      void account.refresh();
+      await actions.afterAccountChange();
     },
     'alran.providerSetKey': async () => {
-      const apiKey = await vscode.window.showInputBox({
-        title: 'Alran API key',
-        password: true,
-        ignoreFocusOut: true,
-      });
-      if (!apiKey) return;
-      await cli.providers.setAlranKey(await runtime.cliContext(), apiKey);
-      refreshCapabilities();
-      await actions.restartAgent();
+      if (await account.signInWithApiKey()) refreshCapabilities();
     },
 
     // Account and maintenance
     'alran.login': () => actions.login(),
+    'alran.loginOptions': () => account.signInOptions(),
+    'alran.loginWithDeviceCode': () => account.signIn({ flow: 'device', force: account.signedIn }),
+    'alran.loginWithApiKey': () => account.signInWithApiKey(),
     'alran.logout': () => actions.logout(),
+    'alran.switchCompany': () => account.switchCompany(),
+    'alran.selectProject': () => account.selectProject(),
+    'alran.pickDefaultModel': () => account.pickDefaultModel(),
+    'alran.openBilling': () => account.openBilling(),
+    'alran.refreshAccount': () => account.refresh({ usage: true }),
+    'alran.accountUsage': async () => {
+      await vscode.commands.executeCommand('alran.account.focus');
+      await account.refresh({ usage: true });
+    },
     'alran.update': () => actions.update(),
     'alran.installCli': () => actions.offerInstall(),
     'alran.restartAgent': () => actions.restartAgent(),

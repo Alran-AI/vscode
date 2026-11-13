@@ -10,6 +10,8 @@ import path from 'node:path';
  */
 export interface Fixture {
   readonly cliPath: string;
+  /** Origin of the scripted model provider (`<origin>/v1/chat/completions`). */
+  readonly modelOrigin: string;
   readonly workspace: string;
   readonly outsideDir: string;
   readonly dataDir: string;
@@ -36,6 +38,8 @@ export async function createFixture(): Promise<Fixture> {
   const home = path.join(root, 'home');
   for (const directory of [dataDir, workspace, outsideDir, home]) mkdirSync(directory);
   writeFileSync(path.join(workspace, 'a.txt'), 'line one\nline two\nline three\n');
+  mkdirSync(path.join(workspace, 'src'));
+  writeFileSync(path.join(workspace, 'src', 'date.ts'), DEMO_SOURCE);
 
   const requests: string[] = [];
   const server = createServer((request, response) => {
@@ -60,6 +64,8 @@ export async function createFixture(): Promise<Fixture> {
     JSON.stringify({
       defaultModel: 'custom_provider:fixture/fixture',
       permission: { mode: 'default' },
+      // Programmatic Tool Calling is opt-in; the run_code test needs it.
+      beta: { ptc: true },
       custom_provider: {
         fixture: {
           name: 'fixture',
@@ -81,11 +87,11 @@ export async function createFixture(): Promise<Fixture> {
     ALRAN_DATA_DIR: dataDir,
     MAVIS_DATA_DIR: dataDir,
     ALRAN_TEST_ALLOWED_ORIGIN: origin,
-    ALRAN_TEST_MANAGED_OFFLINE: '1',
     ALRAN_DISABLE_TELEMETRY: '1',
   };
   return {
     cliPath,
+    modelOrigin: origin,
     workspace,
     outsideDir,
     dataDir,
@@ -132,6 +138,25 @@ async function respond(
   const last = body.messages[body.messages.length - 1];
   const text = lastUserText(last);
   requests.push(text);
+  const failure = /DO_FAIL_(\d{3})/u.exec(last?.role === 'user' ? text : '');
+  if (failure?.[1]) {
+    const status = Number(failure[1]);
+    const errors: Record<number, { code: string; message: string; type: string }> = {
+      401: { code: 'unauthenticated', type: 'authentication_error', message: 'The session has ended.' },
+      402: {
+        code: 'free_credit_model_restricted',
+        type: 'insufficient_quota',
+        message: 'Welcome credit covers Ottili Werk only. Add purchased credit to use this model.',
+      },
+      429: { code: 'rate_limited', type: 'rate_limit_error', message: 'Too many requests.' },
+      500: { code: 'upstream_error', type: 'server_error', message: 'The upstream model failed.' },
+    };
+    const error = errors[status] ?? { code: 'error', type: 'error', message: 'Failed.' };
+    response
+      .writeHead(status, { 'content-type': 'application/json', ...(status === 429 ? { 'retry-after': '1' } : {}) })
+      .end(JSON.stringify({ error }));
+    return;
+  }
   response.writeHead(200, { 'content-type': 'text/event-stream' });
   const send = (chunk: object) =>
     response.write(
@@ -172,7 +197,19 @@ async function respond(
   };
 
   const file = (name: string) => path.join(paths.workspace, name);
-  if (last?.role === 'tool') {
+  const lastUser = lastUserText([...body.messages].reverse().find((message) => message.role === 'user'));
+  if (lastUser.includes('DO_DEMO') || lastUser.includes('reject invalid dates')) {
+    const toolTurns = body.messages.slice(body.messages.findLastIndex((message) => message.role === 'user')).filter((message) => message.role === 'tool').length;
+    if (toolTurns === 0) {
+      callTool('edit', { file_path: file('src/date.ts'), old_string: DEMO_OLD, new_string: DEMO_NEW });
+    } else {
+      await say(DEMO_REPLY, 4);
+    }
+    return;
+  }
+  if (last?.role === 'tool' && /permission denied/iu.test(text)) {
+    await say('Understood, I left the shared folder alone. The change stays in the workspace.');
+  } else if (last?.role === 'tool') {
     await say(`Tool done: ${stripReminder(text).slice(0, 48)}`);
   } else if (text.includes('<questionnaire-response>') || text.includes('Q: ')) {
     await say(`Thanks for answering. ${/A: ([^"\\]+)/u.exec(text)?.[1] ?? ''}`.trim());
@@ -180,7 +217,7 @@ async function respond(
     callTool('edit', { file_path: file('a.txt'), old_string: 'line two', new_string: 'line TWO' });
   } else if (text.includes('DO_WRITE')) {
     callTool('write', { path: file('created.txt'), content: 'brand new\n' });
-  } else if (text.includes('DO_OUTSIDE')) {
+  } else if (text.includes('DO_OUTSIDE') || text.includes('shared folder')) {
     callTool('write', { path: path.join(paths.outsideDir, 'guarded.txt'), content: 'outside\n' });
   } else if (text.includes('DO_RUNCODE')) {
     callTool('run_code', {
@@ -215,3 +252,37 @@ async function respond(
 function stripReminder(text: string): string {
   return text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gu, '').trim();
 }
+
+const DEMO_OLD = `export function parseDate(input: string): Date {
+  return new Date(input);
+}`;
+
+const DEMO_NEW = `export function parseDate(input: string): Date {
+  const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(input.trim());
+  if (!match) throw new RangeError(\`Expected YYYY-MM-DD, got "\${input}"\`);
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCMonth() !== month - 1) throw new RangeError(\`No such date: \${input}\`);
+  return date;
+}`;
+
+const DEMO_SOURCE = `/** Parses the dates our API sends. */
+${DEMO_OLD}
+
+export function formatDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+`;
+
+const DEMO_REPLY = `\`parseDate\` accepted anything \`new Date()\` could guess, so \`"2026-02-30"\` quietly became March 2. It now:
+
+- accepts only \`YYYY-MM-DD\` and throws a \`RangeError\` that names the bad input,
+- builds the date in UTC, so the result no longer depends on the machine's time zone,
+- rejects dates that do not exist, such as February 30.
+
+\`\`\`ts
+parseDate('2026-11-13'); // 2026-11-13T00:00:00.000Z
+parseDate('2026-02-30'); // RangeError: No such date: 2026-02-30
+\`\`\`
+
+Run the tests with \`npm test\` to confirm; the change is in the **Changes** view if you want to review or revert it.`;

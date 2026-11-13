@@ -1,21 +1,20 @@
 {
   "name": "alran-vscode",
   "displayName": "Alran Code",
-  "description": "Alran Code, the AI coding agent by Ottili, inside VS Code and compatible editors. Runs the real Alran Code harness over the Agent Client Protocol.",
-  "version": "0.1.0",
+  "description": "Ottili's AI coding agent in VS Code: chat, plan, edit, review and run tasks with Ottili Werk, Claude or your own model. Requires the Alran Code CLI (alran.dev).",
+  "version": "0.2.0",
   "publisher": "ottili",
   "license": "MIT",
-  "private": true,
   "icon": "media/icon.png",
   "galleryBanner": {
-    "color": "#1b2a4a",
+    "color": "#050A16",
     "theme": "dark"
   },
-  "homepage": "https://api.ottili.one",
+  "homepage": "https://alran.dev/en/vscode",
   "categories": [
     "AI",
     "Chat",
-    "Programming Languages",
+    "Machine Learning",
     "Other"
   ],
   "keywords": [
@@ -23,9 +22,16 @@
     "ottili",
     "ai",
     "agent",
-    "acp",
     "coding agent",
-    "mcp"
+    "ai agent",
+    "chat",
+    "claude",
+    "werk",
+    "acp",
+    "agent client protocol",
+    "mcp",
+    "code review",
+    "refactor"
   ],
   "engines": {
     "vscode": "^1.90.0",
@@ -68,6 +74,12 @@
           "contextualTitle": "Alran Code"
         },
         {
+          "id": "alran.account",
+          "name": "Account",
+          "icon": "media/activitybar.svg",
+          "visibility": "collapsed"
+        },
+        {
           "id": "alran.sessions",
           "name": "Sessions",
           "visibility": "collapsed",
@@ -96,15 +108,25 @@
     "viewsWelcome": [
       {
         "view": "alran.sessions",
-        "contents": "Previous sessions appear here once the agent is connected.\n[Open Chat](command:alran.openChat)"
+        "contents": "Your previous sessions in this workspace appear here.\n[Open Chat](command:alran.openChat)\n[Resume a Session…](command:alran.resumeSession)"
       },
       {
         "view": "alran.changes",
-        "contents": "Files this session changes appear here."
+        "contents": "Files the current session changes appear here, with a diff and a one-click revert."
       },
       {
         "view": "alran.agents",
-        "contents": "Sub-agents started by this session appear here."
+        "contents": "Sub-agents the current session starts appear here while they work."
+      },
+      {
+        "view": "alran.account",
+        "contents": "Sign in with your Ottili account to use Ottili Werk and Claude models and to see your credit and usage here.\n[Sign In](command:alran.login)\n[Other ways to connect…](command:alran.loginOptions)\nNo account? Use [your own model provider](command:alran.providerAdd) with your own API key.",
+        "when": "alran.accountKnown && !alran.signedIn"
+      },
+      {
+        "view": "alran.account",
+        "contents": "Checking your account…",
+        "when": "!alran.accountKnown"
       }
     ],
     "commands": [
@@ -307,7 +329,7 @@
       },
       {
         "command": "alran.status",
-        "title": "Show Account and Model Status",
+        "title": "Show Agent Status (/status)",
         "category": "Alran"
       },
       {
@@ -317,7 +339,7 @@
       },
       {
         "command": "alran.usage",
-        "title": "Show Session Usage",
+        "title": "Show Session Usage (/usage)",
         "category": "Alran"
       },
       {
@@ -444,24 +466,24 @@
       },
       {
         "command": "alran.providerUseSource",
-        "title": "Choose Alran Credential Source…",
+        "title": "Choose Ottili Credentials…",
         "category": "Alran"
       },
       {
         "command": "alran.providerSetKey",
-        "title": "Set Alran API Key…",
+        "title": "Use an Ottili API Key…",
         "category": "Alran",
         "icon": "$(key)"
       },
       {
         "command": "alran.login",
-        "title": "Sign In",
+        "title": "Sign In to Ottili",
         "category": "Alran",
         "icon": "$(account)"
       },
       {
         "command": "alran.logout",
-        "title": "Sign Out",
+        "title": "Sign Out of Ottili",
         "category": "Alran",
         "icon": "$(sign-out)"
       },
@@ -473,8 +495,9 @@
       },
       {
         "command": "alran.installCli",
-        "title": "Install or Locate the CLI…",
-        "category": "Alran"
+        "title": "Install or Locate the Alran CLI…",
+        "category": "Alran",
+        "icon": "$(cloud-download)"
       },
       {
         "command": "alran.restartAgent",
@@ -526,31 +549,104 @@
         "command": "alran.mascot",
         "title": "Visit the Mascot",
         "category": "Alran"
+      },
+      {
+        "command": "alran.loginOptions",
+        "title": "Sign In… (Browser, Code, API Key, Own Provider)",
+        "category": "Alran",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "alran.loginWithDeviceCode",
+        "title": "Sign In with a Code",
+        "category": "Alran",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "alran.loginWithApiKey",
+        "title": "Sign In with an Ottili API Key…",
+        "category": "Alran",
+        "icon": "$(key)"
+      },
+      {
+        "command": "alran.switchCompany",
+        "title": "Switch Company…",
+        "category": "Alran",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "alran.selectProject",
+        "title": "Choose Project…",
+        "category": "Alran",
+        "icon": "$(project)"
+      },
+      {
+        "command": "alran.pickDefaultModel",
+        "title": "Choose Default Model…",
+        "category": "Alran",
+        "icon": "$(star-empty)"
+      },
+      {
+        "command": "alran.openBilling",
+        "title": "Add Credit and Manage Billing",
+        "category": "Alran",
+        "icon": "$(credit-card)"
+      },
+      {
+        "command": "alran.refreshAccount",
+        "title": "Refresh Account",
+        "category": "Alran",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "alran.accountUsage",
+        "title": "Show Credit and Spending",
+        "category": "Alran",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "alran.useWerk",
+        "title": "Switch to Ottili Werk",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.answerPermission",
+        "title": "Answer Permission Request",
+        "category": "Alran"
+      },
+      {
+        "command": "alran.showSession",
+        "title": "Show Session in Chat",
+        "category": "Alran"
       }
     ],
     "keybindings": [
       {
         "command": "alran.openChat",
         "key": "ctrl+alt+a",
-        "mac": "cmd+alt+a"
+        "mac": "cmd+alt+a",
+        "win": "ctrl+shift+alt+a"
       },
       {
         "command": "alran.newSession",
         "key": "ctrl+alt+n",
         "mac": "cmd+alt+n",
-        "when": "alran.hasSession"
+        "when": "alran.hasSession",
+        "win": "ctrl+shift+alt+n"
       },
       {
         "command": "alran.addSelection",
         "key": "ctrl+alt+l",
         "mac": "cmd+alt+l",
-        "when": "editorTextFocus"
+        "when": "editorTextFocus",
+        "win": "ctrl+shift+alt+l"
       },
       {
         "command": "alran.explainSelection",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
-        "when": "editorHasSelection"
+        "when": "editorHasSelection",
+        "win": "ctrl+shift+alt+e"
       },
       {
         "command": "alran.cancel",
@@ -561,12 +657,14 @@
       {
         "command": "alran.pickModel",
         "key": "ctrl+alt+m",
-        "mac": "cmd+alt+m"
+        "mac": "cmd+alt+m",
+        "win": "ctrl+shift+alt+m"
       },
       {
         "command": "alran.togglePlanMode",
         "key": "ctrl+alt+p",
-        "mac": "cmd+alt+p"
+        "mac": "cmd+alt+p",
+        "win": "ctrl+shift+alt+p"
       }
     ],
     "menus": {
@@ -609,6 +707,14 @@
         },
         {
           "command": "alran.revertChange",
+          "when": "false"
+        },
+        {
+          "command": "alran.answerPermission",
+          "when": "false"
+        },
+        {
+          "command": "alran.showSession",
           "when": "false"
         }
       ],
@@ -677,6 +783,46 @@
           "command": "alran.refreshCapabilities",
           "when": "view == alran.capabilities",
           "group": "navigation"
+        },
+        {
+          "command": "alran.refreshAccount",
+          "when": "view == alran.account",
+          "group": "navigation@2"
+        },
+        {
+          "command": "alran.openBilling",
+          "when": "view == alran.account && alran.signedIn",
+          "group": "navigation@1"
+        },
+        {
+          "command": "alran.logout",
+          "when": "view == alran.account && alran.signedIn",
+          "group": "1_more@9"
+        },
+        {
+          "command": "alran.loginOptions",
+          "when": "view == alran.account",
+          "group": "1_more@1"
+        },
+        {
+          "command": "alran.switchCompany",
+          "when": "view == alran.account && alran.signedIn",
+          "group": "1_more@2"
+        },
+        {
+          "command": "alran.selectProject",
+          "when": "view == alran.account && alran.signedIn",
+          "group": "1_more@3"
+        },
+        {
+          "command": "alran.pickDefaultModel",
+          "when": "view == alran.account",
+          "group": "1_more@4"
+        },
+        {
+          "command": "alran.update",
+          "when": "view == alran.account",
+          "group": "2_cli@1"
         }
       ],
       "view/item/context": [
@@ -749,6 +895,31 @@
           "command": "alran.providerRemove",
           "when": "viewItem == provider.editable",
           "group": "inline@2"
+        },
+        {
+          "command": "alran.switchCompany",
+          "when": "view == alran.account && viewItem == account.company",
+          "group": "inline"
+        },
+        {
+          "command": "alran.selectProject",
+          "when": "view == alran.account && viewItem == account.project",
+          "group": "inline"
+        },
+        {
+          "command": "alran.pickDefaultModel",
+          "when": "view == alran.account && viewItem == account.model",
+          "group": "inline"
+        },
+        {
+          "command": "alran.openBilling",
+          "when": "view == alran.account && viewItem == account.credits",
+          "group": "inline"
+        },
+        {
+          "command": "alran.logout",
+          "when": "view == alran.account && viewItem == account.user",
+          "group": "inline"
         }
       ],
       "editor/context": [
@@ -937,41 +1108,90 @@
       {
         "id": "alran.gettingStarted",
         "title": "Get started with Alran Code",
-        "description": "Connect the CLI, sign in, and run your first task.",
+        "description": "Install the CLI, connect a model, and run your first task.",
         "steps": [
           {
             "id": "install",
             "title": "Install the Alran CLI",
-            "description": "The extension drives the `alran` command through the Agent Client Protocol.\n[Install or Locate the CLI](command:alran.installCli)",
+            "description": "The extension runs the real Alran Code CLI on your machine.\n[Install or Locate the CLI](command:alran.installCli)",
             "media": {
               "markdown": "media/walkthrough/install.md"
             },
             "completionEvents": [
-              "onCommand:alran.installCli"
+              "onCommand:alran.installCli",
+              "onContext:alran.connected"
             ]
           },
           {
             "id": "signin",
-            "title": "Sign in or add a provider",
-            "description": "Use your Ottili account, or bring your own API key.\n[Sign In](command:alran.login)\n[Add a Provider](command:alran.providerAdd)",
+            "title": "Sign in, or bring your own key",
+            "description": "Sign in with your Ottili account to use Ottili Werk and Claude. Or connect your own provider.\n[Sign In](command:alran.login)\n[Other Ways to Connect](command:alran.loginOptions)",
             "media": {
               "markdown": "media/walkthrough/signin.md"
             },
             "completionEvents": [
-              "onCommand:alran.login",
-              "onCommand:alran.providerAdd"
+              "onContext:alran.signedIn",
+              "onCommand:alran.providerAdd",
+              "onCommand:alran.loginWithApiKey"
+            ]
+          },
+          {
+            "id": "model",
+            "title": "Pick a model",
+            "description": "See what each model costs and whether your credit covers it.\n[Choose Model](command:alran.pickModel)",
+            "media": {
+              "markdown": "media/walkthrough/model.md"
+            },
+            "completionEvents": [
+              "onCommand:alran.pickModel",
+              "onCommand:alran.pickDefaultModel"
             ]
           },
           {
             "id": "chat",
             "title": "Run your first task",
-            "description": "Open the chat and describe what you need.\n[Open Chat](command:alran.openChat)",
+            "description": "Open the chat and describe what you need. Alran plans, edits, runs and checks.\n[Open Chat](command:alran.openChat)",
             "media": {
               "markdown": "media/walkthrough/chat.md"
             },
             "completionEvents": [
-              "onCommand:alran.openChat"
+              "onCommand:alran.openChat",
+              "onView:alran.chat"
             ]
+          }
+        ]
+      }
+    ],
+    "authentication": [
+      {
+        "id": "alran",
+        "label": "Ottili"
+      }
+    ],
+    "terminal": {
+      "profiles": [
+        {
+          "id": "alran.terminalProfile",
+          "title": "Alran Code",
+          "icon": "sparkle"
+        }
+      ]
+    },
+    "chatParticipants": [
+      {
+        "id": "alran.agent",
+        "name": "alran",
+        "fullName": "Alran Code",
+        "description": "Ask Alran Code to build, fix, test or review — runs the Alran agent on your workspace",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "new",
+            "description": "Start a fresh Alran session"
+          },
+          {
+            "name": "review",
+            "description": "Review your uncommitted changes"
           }
         ]
       }
@@ -985,8 +1205,10 @@
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration",
     "test:e2e": "node esbuild.mjs && node esbuild.mjs --tests && node dist-test/runE2e.cjs",
-    "package": "node esbuild.mjs --production && vsce package --no-dependencies --allow-missing-repository --no-rewrite-relative-links",
-    "vscode:prepublish": "node esbuild.mjs --production"
+    "package": "node esbuild.mjs --production && vsce package --no-dependencies",
+    "vscode:prepublish": "node esbuild.mjs --production",
+    "publish:vsce": "vsce publish --no-dependencies",
+    "publish:ovsx": "npx --yes ovsx@1.4.0 publish --no-dependencies"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.3.0",
@@ -1004,5 +1226,13 @@
     "esbuild": "0.28.2",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alran-AI/vscode.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Alran-AI/vscode/issues"
+  },
+  "pricing": "Free"
 }

@@ -3,6 +3,8 @@
  * everything else in `src/shared` must stay free of `vscode` and Node imports.
  */
 
+import type { FailureView } from './errors';
+
 export type ToolStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 
 export type ToolContentBlock =
@@ -137,6 +139,8 @@ export interface NoticeItem {
   retryable?: boolean;
   /** Offers a sign-in button. */
   authRequired?: boolean;
+  /** A failed turn, described for people, with the actions that help. */
+  failure?: FailureView;
   timestamp: number;
 }
 
@@ -303,6 +307,20 @@ export interface PromptInput {
   readonly text: string;
   readonly attachments: readonly ComposerAttachment[];
 }
+
+/** The Ottili account, as far as the chat shows it. */
+export type AccountView =
+  | { readonly state: 'unknown' | 'loading' | 'signed-out' }
+  /** Model calls use an Ottili API key or the person's own provider, without a Platform session. */
+  | { readonly state: 'api-key' | 'provider'; readonly label?: string }
+  | {
+      readonly state: 'signed-in';
+      readonly name: string;
+      readonly company?: string;
+      /** Available credit, formatted ("$4.80"). */
+      readonly credit?: string;
+      readonly lowCredit?: boolean;
+    };
 
 export interface ChatPreferences {
   readonly enterWhileRunning: 'steer' | 'queue';

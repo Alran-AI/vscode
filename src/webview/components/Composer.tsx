@@ -21,6 +21,7 @@ interface MenuEntry {
 }
 
 const MAX_HISTORY = 100;
+const IS_MAC = /Mac|iPhone|iPad/u.test(navigator.platform || navigator.userAgent);
 let attachmentCounter = 0;
 
 function newAttachmentId(): string {
@@ -109,11 +110,14 @@ export function Composer({
   preferences,
   activeFile,
   busy,
+  disabled = false,
 }: {
   readonly meta: SessionMeta | null;
   readonly preferences: ChatPreferences;
   readonly activeFile?: string;
   readonly busy: boolean;
+  /** No agent to talk to yet (CLI missing, sign-in needed, startup failed). */
+  readonly disabled?: boolean;
 }) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -347,9 +351,14 @@ export function Composer({
   const usage = meta?.usage;
   const usagePercent = usage && usage.size > 0 ? Math.round((usage.used / usage.size) * 100) : undefined;
   const busyAction = preferences.enterWhileRunning === 'steer' ? 'steer' : 'queue';
-  const placeholder = busy
-    ? `Send to ${busyAction} the running task (Ctrl+Enter to ${busyAction === 'steer' ? 'queue' : 'steer'})`
-    : 'Ask Alran. @ to add context, / for commands';
+  const modifier = IS_MAC ? 'Cmd' : 'Ctrl';
+  const placeholder = disabled
+    ? 'Connect Alran Code above to start'
+    : busy
+      ? `Send to ${busyAction} the running task (${modifier}+Enter to ${busyAction === 'steer' ? 'queue' : 'steer'})`
+      : preferences.sendShortcut === 'ctrlEnter'
+        ? `Ask Alran. @ for context, / for commands, ${modifier}+Enter to send`
+        : 'Ask Alran. @ for context, / for commands';
 
   return (
     <div class="composer" onDrop={onDrop} onDragOver={(event) => event.preventDefault()}>
@@ -400,6 +409,7 @@ export function Composer({
           class="composer-input"
           rows={1}
           value={text}
+          disabled={disabled}
           placeholder={placeholder}
           aria-label="Message Alran"
           onInput={(event) => {
@@ -416,7 +426,7 @@ export function Composer({
           onPaste={onPaste}
         />
         <div class="composer-footer">
-          <button class="icon-button" title="Attach files or images" onClick={() => post({ type: 'pickAttachment' })}>
+          <button class="icon-button" title="Attach files or images" aria-label="Attach files or images" disabled={disabled} onClick={() => post({ type: 'pickAttachment' })}>
             <Icon name="add" />
           </button>
           {activeFile && !includeActive ? (
@@ -447,14 +457,15 @@ export function Composer({
             </span>
           ) : null}
           {busy ? (
-            <button class="icon-button stop" title="Stop (Esc)" onClick={() => post({ type: 'cancel' })}>
+            <button class="icon-button stop" title="Stop (Esc)" aria-label="Stop" onClick={() => post({ type: 'cancel' })}>
               <Icon name="debug-stop" />
             </button>
           ) : null}
           <button
             class="icon-button send"
             title={busy ? `Send (${busyAction})` : 'Send'}
-            disabled={!text.trim() && attachments.length === 0}
+            aria-label="Send"
+            disabled={disabled || (!text.trim() && attachments.length === 0)}
             onClick={() => send(text, false)}
           >
             <Icon name="send" />

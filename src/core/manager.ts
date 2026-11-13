@@ -13,6 +13,7 @@ import type {
   TabView,
   TranscriptItem,
 } from '../shared/types';
+import { isTransientStorageFailure } from './cli';
 import { SessionController, type AttentionEvent } from './session';
 
 export interface PersistedSessionInfo {
@@ -94,10 +95,8 @@ export class SessionManager {
     if (this.agent?.running) return Promise.resolve(this.agent);
     if (this.connecting) return this.connecting;
     this.setConnection({ state: 'connecting' });
-    this.connecting = this.host
-      .createAgent(this.handlers())
-      .then(async (agent) => {
-        await agent.start();
+    this.connecting = this.startAgent()
+      .then((agent) => {
         this.agent = agent;
         this.restarts = 0;
         this.setConnection({
@@ -119,6 +118,22 @@ export class SessionManager {
         this.connecting = undefined;
       });
     return this.connecting;
+  }
+
+  /** Starts the process; a transient storage race at first start is retried. */
+  private async startAgent(): Promise<AlranAgent> {
+    for (let attempt = 1; ; attempt += 1) {
+      const agent = await this.host.createAgent(this.handlers());
+      try {
+        await agent.start();
+        return agent;
+      } catch (error) {
+        await agent.stop().catch(() => undefined);
+        if (attempt >= 3 || !isTransientStorageFailure(errorMessage(error))) throw error;
+        this.listener.log(`agent start hit a storage race, retrying: ${errorMessage(error)}`);
+        await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+      }
+    }
   }
 
   private requireAgent = (): AlranAgent => {
@@ -149,6 +164,7 @@ export class SessionManager {
           attention: (event) => this.listener.attention(event),
           turn: (sessionId, running) => this.listener.turn(sessionId, running),
           authRequired: () => this.setConnection({ state: 'auth-required' }),
+          log: (line) => this.listener.log(line),
         },
       },
       options,
@@ -157,26 +173,35 @@ export class SessionManager {
     return session;
   }
 
-  async newSession(cwd: string): Promise<SessionController> {
+  /** Opens a fresh Session. `activate: false` keeps the chat on its current tab. */
+  async newSession(cwd: string, options: { readonly activate?: boolean } = {}): Promise<SessionController> {
     const agent = await this.connect();
     const response = await this.withAuthCheck(() => agent.newSession(cwd, this.host.mcpServers()));
     const session = this.createController(response.sessionId, cwd);
     session.applyControlState(response);
     session.markReady();
-    this.setActive(session.id);
+    if (options.activate === false) this.emitTabs();
+    else this.setActive(session.id);
     void session.refreshExtensions();
     return session;
   }
 
-  async openSession(id: string, cwd: string, title?: string): Promise<SessionController> {
+  async openSession(
+    id: string,
+    cwd: string,
+    title?: string,
+    options: { readonly activate?: boolean } = {},
+  ): Promise<SessionController> {
+    const activate = options.activate !== false;
     const existing = this.sessions.get(id);
     if (existing) {
-      this.setActive(id);
+      if (activate) this.setActive(id);
       return existing;
     }
     await this.connect();
     const session = this.createController(id, cwd, title ? { title } : {});
-    this.setActive(id);
+    if (activate) this.setActive(id);
+    else this.emitTabs();
     try {
       await this.withAuthCheck(() => session.attach());
     } catch (error) {

@@ -3,14 +3,21 @@ import * as vscode from 'vscode';
 import { isInterestingPath } from './core/changes';
 import type { AttentionEvent } from './core/session';
 import type { ConnectionState, SessionMeta } from './shared/types';
+import { AlranCliNotFoundError } from './acp/binary';
+import { formatMicroUsd } from './core/account';
+import { AccountService, registerAuthenticationProvider, type OttiliAuthenticationProvider } from './host/account';
 import { AlranActions } from './host/actions';
 import { ChatHub } from './host/chatHub';
+import { registerChatParticipant, type AlranChatParticipant } from './host/chatParticipant';
 import { registerCommands } from './host/commands';
 import { AlranCodeActions } from './host/context';
 import { VirtualDocuments } from './host/diff';
 import { AlranRuntime } from './host/runtime';
 import { SlashRouter } from './host/slash';
-import { AgentsTree, CapabilitiesTree, ChangesTree, SessionsTree } from './host/trees';
+import { AccountTree, AgentsTree, CapabilitiesTree, ChangesTree, compareVersions, SessionsTree } from './host/trees';
+
+/** The first CLI with the account commands (`alran auth`, `models`, `usage`, `billing`). */
+const MIN_CLI_VERSION = '0.2.0';
 
 /** Settings read when the agent process starts. */
 const AGENT_SETTINGS = [
@@ -29,11 +36,17 @@ export interface AlranExtensionApi {
   readonly runtime: AlranRuntime;
   readonly hub: ChatHub;
   readonly actions: AlranActions;
+  readonly account: AccountService;
+  /** The Ottili account in the editor's Accounts menu. */
+  readonly authProvider: OttiliAuthenticationProvider;
+  /** `@alran` in the editor's Chat view, where the editor has one. */
+  readonly chatParticipant?: AlranChatParticipant;
   readonly trees: {
     readonly sessions: SessionsTree;
     readonly changes: ChangesTree;
     readonly agents: AgentsTree;
     readonly capabilities: CapabilitiesTree;
+    readonly account: AccountTree;
   };
 }
 
@@ -41,7 +54,8 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
   const runtime = new AlranRuntime(context);
   const documents = new VirtualDocuments();
   const hub = new ChatHub(runtime);
-  const actions = new AlranActions(runtime, documents, {
+  const account = new AccountService(runtime);
+  const actions = new AlranActions(runtime, documents, account, {
     focusChat: () => hub.focus(),
     addAttachments: (attachments) => hub.addAttachments(attachments),
     setDraft: (text, send) => hub.setDraft(text, send),
@@ -50,7 +64,12 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
   const changes = new ChangesTree(runtime);
   const agents = new AgentsTree(runtime);
   const capabilities = new CapabilitiesTree(runtime);
+  const accountTree = new AccountTree(runtime, account);
+  account.onCredentialsChanged = () => actions.afterAccountChange();
+  const chat = registerChatParticipant(runtime, context.extensionUri);
+  const auth = registerAuthenticationProvider(account);
   hub.actions = actions;
+  hub.account = account;
   hub.router = new SlashRouter(actions, {
     focusCapabilities: async () => {
       await vscode.commands.executeCommand('alran.capabilities.focus');
@@ -65,11 +84,19 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     runtime,
     documents,
     hub,
+    account,
     actions,
     sessions,
     changes,
     agents,
     capabilities,
+    accountTree,
+    auth.disposable,
+    chat.disposable,
+    vscode.window.registerTreeDataProvider('alran.account', accountTree),
+    vscode.window.registerTerminalProfileProvider('alran.terminalProfile', {
+      provideTerminalProfile: async () => new vscode.TerminalProfile(await runtime.terminalOptions([])),
+    }),
     vscode.window.registerWebviewViewProvider(ChatHub.viewId, hub, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
@@ -80,11 +107,13 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     vscode.languages.registerCodeActionsProvider({ scheme: 'file' }, new AlranCodeActions(), {
       providedCodeActionKinds: AlranCodeActions.kinds,
     }),
-    ...registerCommands({ runtime, actions, hub, sessions, changes, agents, capabilities }),
-    new StatusBar(runtime),
+    ...registerCommands({ runtime, actions, hub, account, sessions, changes, agents, capabilities }),
+    new StatusBar(runtime, account),
     new AttentionNotifier(runtime, hub),
     createChangeWatcher(runtime),
-    registerContextKeys(runtime),
+    registerContextKeys(runtime, account),
+    warnAboutOldCli(runtime, actions),
+    ...checkCliInstalled(context, runtime, actions),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (!AGENT_SETTINGS.some((key) => event.affectsConfiguration(key))) return;
       if (runtime.manager.connection.state === 'disconnected') return;
@@ -97,8 +126,20 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     }),
   );
 
-  void capabilities.loadPlugins().catch(() => undefined);
-  return { runtime, hub, actions, trees: { sessions, changes, agents, capabilities } };
+  // One CLI call at a time at startup: a fresh data directory is migrated by the first one.
+  void account
+    .refresh()
+    .finally(() => capabilities.loadPlugins())
+    .catch(() => undefined);
+  return {
+    runtime,
+    hub,
+    actions,
+    account,
+    authProvider: auth.provider,
+    ...(chat.participant ? { chatParticipant: chat.participant } : {}),
+    trees: { sessions, changes, agents, capabilities, account: accountTree },
+  };
 }
 
 export function deactivate(): void {
@@ -113,8 +154,15 @@ class StatusBar implements vscode.Disposable {
   private readonly context = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 97);
   private readonly disposables: vscode.Disposable[];
 
-  constructor(private readonly runtime: AlranRuntime) {
+  constructor(
+    private readonly runtime: AlranRuntime,
+    private readonly account: AccountService,
+  ) {
     this.main.command = 'alran.openChat';
+    this.main.name = 'Alran Code';
+    this.model.name = 'Alran Code: Model';
+    this.permission.name = 'Alran Code: Permission Mode';
+    this.context.name = 'Alran Code: Context';
     this.model.command = 'alran.pickModel';
     this.permission.command = 'alran.pickPermissionMode';
     this.context.command = 'alran.context';
@@ -122,16 +170,44 @@ class StatusBar implements vscode.Disposable {
       runtime.onDidChangeConnection(() => this.render()),
       runtime.onDidChangeMeta(() => this.render()),
       runtime.onDidChangeTabs(() => this.render()),
+      account.onDidChange(() => this.render()),
     ];
     this.render();
     this.main.show();
+  }
+
+  private tooltip(connection: ConnectionState): vscode.MarkdownString {
+    const lines: string[] = ['**Alran Code**'];
+    const { status, credits } = this.account.snapshot;
+    if (connection.state === 'connected' && connection.version) lines.push(`CLI ${connection.version}`);
+    if (connection.state === 'auth-required') lines.push('Not signed in — [Sign in](command:alran.login)');
+    if (connection.state === 'missing-binary') lines.push('CLI not found — [Install](command:alran.installCli)');
+    if (connection.state === 'error') lines.push('The agent stopped — [Show logs](command:alran.showLogs)');
+    if (status?.signedIn) {
+      lines.push(`Signed in as ${status.name ?? 'your Ottili account'}${status.companyId ? ` · ${status.companyId}` : ''}`);
+      if (credits?.available_microcents !== undefined) {
+        lines.push(`Credit: ${formatMicroUsd(credits.available_microcents)} available — [Add credit](command:alran.openBilling)`);
+      }
+    } else if (status && connection.state !== 'auth-required') {
+      lines.push('Ottili account: not signed in — [Sign in](command:alran.login)');
+    }
+    lines.push('[Open chat](command:alran.openChat) · [Account](command:alran.account.focus) · [Logs](command:alran.showLogs)');
+    const markdown = new vscode.MarkdownString(lines.join('\n\n'), true);
+    markdown.isTrusted = {
+      enabledCommands: ['alran.login', 'alran.installCli', 'alran.showLogs', 'alran.openBilling', 'alran.openChat', 'alran.account.focus'],
+    };
+    return markdown;
   }
 
   private render(): void {
     const { manager } = this.runtime;
     const meta = manager.active?.meta;
     this.main.text = this.mainText(manager.connection, meta);
-    this.main.tooltip = 'Open the Alran Code chat';
+    this.main.tooltip = this.tooltip(manager.connection);
+    this.main.backgroundColor =
+      manager.connection.state === 'error' || manager.connection.state === 'missing-binary'
+        ? new vscode.ThemeColor('statusBarItem.errorBackground')
+        : undefined;
     const model = meta?.config.find((option) => option.id === 'model');
     const permission = meta?.config.find((option) => option.id === 'permissionMode');
     this.renderOption(this.model, '$(hubot)', model);
@@ -289,8 +365,15 @@ function createChangeWatcher(runtime: AlranRuntime): vscode.Disposable {
   return vscode.Disposable.from(...disposables);
 }
 
-function registerContextKeys(runtime: AlranRuntime): vscode.Disposable {
+function registerContextKeys(runtime: AlranRuntime, account: AccountService): vscode.Disposable {
   const update = () => {
+    const status = account.snapshot.status;
+    void vscode.commands.executeCommand('setContext', 'alran.signedIn', status?.signedIn === true);
+    void vscode.commands.executeCommand(
+      'setContext',
+      'alran.accountKnown',
+      status !== undefined || account.snapshot.error !== undefined,
+    );
     const meta = runtime.manager.active?.meta;
     void vscode.commands.executeCommand('setContext', 'alran.hasSession', meta !== undefined);
     void vscode.commands.executeCommand(
@@ -309,5 +392,71 @@ function registerContextKeys(runtime: AlranRuntime): vscode.Disposable {
     runtime.onDidChangeMeta(update),
     runtime.onDidChangeTabs(update),
     runtime.onDidChangeConnection(update),
+    account.onDidChange(update),
   );
+}
+
+/** Says once per version when the installed CLI is older than this extension needs. */
+function warnAboutOldCli(runtime: AlranRuntime, actions: AlranActions): vscode.Disposable {
+  let warned: string | undefined;
+  return runtime.onDidChangeConnection((connection) => {
+    if (connection.state !== 'connected' || !connection.version || warned === connection.version) return;
+    if (compareVersions(connection.version, MIN_CLI_VERSION) >= 0) return;
+    warned = connection.version;
+    const update = 'Update Alran CLI';
+    void vscode.window
+      .showWarningMessage(
+        `Alran CLI ${connection.version} is older than this extension needs (${MIN_CLI_VERSION}). Sign-in, models, credit and billing need the update.`,
+        update,
+      )
+      .then((choice) => {
+        if (choice === update) void actions.guarded(() => actions.update());
+      });
+  });
+}
+
+const HIDE_MISSING_CLI_KEY = 'alran.hideMissingCliNotice';
+
+/**
+ * The extension is a front end for the Alran CLI and does nothing without it.
+ * Say so right after startup, not only when the chat is opened.
+ */
+function checkCliInstalled(
+  context: vscode.ExtensionContext,
+  runtime: AlranRuntime,
+  actions: AlranActions,
+): vscode.Disposable[] {
+  const check = async (): Promise<void> => {
+    let missing = false;
+    try {
+      await runtime.resolveCli();
+    } catch (error) {
+      missing = error instanceof AlranCliNotFoundError;
+    }
+    void vscode.commands.executeCommand('setContext', 'alran.cliMissing', missing);
+    if (!missing || context.globalState.get<boolean>(HIDE_MISSING_CLI_KEY)) return;
+    const install = 'Install Alran CLI';
+    const locate = 'It Is Installed…';
+    const hide = "Don't Show Again";
+    const choice = await vscode.window.showWarningMessage(
+      'Alran Code needs the Alran CLI on this machine. The extension runs it to do the work.',
+      install,
+      locate,
+      hide,
+    );
+    if (choice === install || choice === locate) await actions.guarded(() => actions.offerInstall());
+    else if (choice === hide) await context.globalState.update(HIDE_MISSING_CLI_KEY, true);
+  };
+  void check();
+  return [
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('alran.executablePath') || event.affectsConfiguration('alran.env')) {
+        void context.globalState.update(HIDE_MISSING_CLI_KEY, undefined);
+        void check();
+      }
+    }),
+    runtime.onDidChangeConnection((state) => {
+      if (state.state === 'connected') void vscode.commands.executeCommand('setContext', 'alran.cliMissing', false);
+    }),
+  ];
 }

@@ -24,6 +24,7 @@ function createSession() {
       attention: () => undefined,
       turn: () => undefined,
       authRequired: () => undefined,
+      log: () => undefined,
     },
   });
   session.markReady();

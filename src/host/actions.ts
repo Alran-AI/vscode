@@ -1,23 +1,25 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 
 import * as vscode from 'vscode';
 
 import { errorMessage } from '../acp/agent';
 import { AlranCliNotFoundError } from '../acp/binary';
+import { formatModelPrice, modelKeyFromConfigValue } from '../core/account';
+import { AlranCliError } from '../core/cli';
 import { AuthRequiredError } from '../core/manager';
 import type { SessionController } from '../core/session';
 import { parseGoalArgs } from '../shared/commands';
 import { transcriptToMarkdown } from '../shared/markdown';
 import type { ComposerAttachment, ConfigOptionView, PromptInput } from '../shared/types';
+import { availabilityLabel, openExternalUrl, type AccountService } from './account';
 import { VirtualDocuments } from './diff';
 import type { AlranRuntime } from './runtime';
 
 export const REVIEW_PROMPT = 'Please review my uncommitted changes.';
-const INSTALL_COMMANDS: Readonly<Record<string, string>> = {
-  win32: 'irm https://cdn.ottili.one/public/install.ps1 | iex',
-  default: 'curl -fsSL https://cdn.ottili.one/public/install.sh | bash',
-};
+export const INSTALL_SCRIPT = 'curl -fsSL https://alran.dev/install.sh | bash';
+export const INSTALL_NPM = 'npm install -g alran';
+export const INSTALL_GUIDE_URL = 'https://alran.dev/en/docs/install';
 const FULL_ACCESS = 'bypassPermissions';
 
 /** Everything the chat, the command palette, and the slash router can do. */
@@ -28,6 +30,7 @@ export class AlranActions {
   constructor(
     readonly runtime: AlranRuntime,
     readonly documents: VirtualDocuments,
+    readonly account: AccountService,
     private readonly hooks: {
       readonly focusChat: () => Promise<void>;
       readonly addAttachments: (attachments: readonly ComposerAttachment[]) => void;
@@ -67,35 +70,113 @@ export class AlranActions {
   async reportError(error: unknown): Promise<void> {
     if (error instanceof AlranCliNotFoundError) {
       await this.offerInstall();
-    } else if (error instanceof AuthRequiredError) {
-      const choice = await vscode.window.showWarningMessage(
-        'Sign in to Alran Code to continue.',
-        'Sign In',
-      );
-      if (choice === 'Sign In') await this.login();
-    } else {
-      const message = errorMessage(error);
-      this.runtime.output.error(message);
-      void vscode.window.showErrorMessage(`Alran Code: ${message}`, 'Show Logs').then((choice) => {
-        if (choice === 'Show Logs') this.runtime.output.show();
-      });
+      return;
     }
+    if (error instanceof AuthRequiredError || (error instanceof AlranCliError && error.kind === 'auth')) {
+      const signIn = 'Sign In';
+      const options = 'Other Options…';
+      const choice = await vscode.window.showWarningMessage(
+        error instanceof AuthRequiredError
+          ? 'Sign in to Alran Code to continue.'
+          : 'Your Ottili session has ended. Sign in again to continue.',
+        signIn,
+        options,
+      );
+      if (choice === signIn) await this.login();
+      else if (choice === options) await this.account.signInOptions();
+      return;
+    }
+    const message = errorMessage(error);
+    this.runtime.output.error(message);
+    if (error instanceof AlranCliError && error.kind === 'credits') {
+      const add = 'Add Credits';
+      if ((await vscode.window.showWarningMessage(message, add)) === add) await this.account.openBilling();
+      return;
+    }
+    if (error instanceof AlranCliError && (error.kind === 'offline' || error.kind === 'rate-limit' || error.kind === 'timeout')) {
+      void vscode.window.showWarningMessage(message);
+      return;
+    }
+    void vscode.window.showErrorMessage(`Alran Code: ${message}`, 'Show Logs').then((choice) => {
+      if (choice === 'Show Logs') this.runtime.output.show();
+    });
   }
 
   async offerInstall(): Promise<void> {
-    const choice = await vscode.window.showErrorMessage(
-      'The Alran Code CLI was not found. Install it, or set "alran.executablePath".',
-      'Run Official Installer',
-      'Set Path…',
-    );
-    if (choice === 'Run Official Installer') {
-      const terminal = vscode.window.createTerminal('Install Alran Code');
-      terminal.show();
-      terminal.sendText(INSTALL_COMMANDS[process.platform] ?? INSTALL_COMMANDS.default ?? '');
-      void vscode.window.showInformationMessage('When the installer finishes, run "Alran: Reload Agent".');
-    } else if (choice === 'Set Path…') {
-      await vscode.commands.executeCommand('workbench.action.openSettings', 'alran.executablePath');
+    type Choice = vscode.QuickPickItem & { readonly id: 'script' | 'npm' | 'path' | 'guide' };
+    const items: Choice[] = [
+      ...(process.platform === 'win32'
+        ? []
+        : [
+            {
+              id: 'script' as const,
+              label: '$(terminal) Install with the official script',
+              description: 'Recommended',
+              detail: `${INSTALL_SCRIPT} — installs Alran and a managed Node.js into ~/.alran-code`,
+            },
+          ]),
+      {
+        id: 'npm',
+        label: '$(package) Install with npm',
+        description: process.platform === 'win32' ? 'Recommended on Windows' : '',
+        detail: `${INSTALL_NPM} — needs Node.js 22.19 or newer`,
+      },
+      {
+        id: 'path',
+        label: '$(folder-opened) Use an existing installation…',
+        detail: 'Point the "alran.executablePath" setting at the alran command or its cli.js.',
+      },
+      { id: 'guide', label: '$(book) Open the installation guide', detail: INSTALL_GUIDE_URL },
+    ];
+    const picked = await vscode.window.showQuickPick(items, {
+      title: 'Install the Alran Code CLI',
+      placeHolder: 'The extension runs the alran command on this machine. It was not found.',
+      ignoreFocusOut: true,
+    });
+    if (!picked) return;
+    if (picked.id === 'guide') {
+      await openExternalUrl(INSTALL_GUIDE_URL);
+      return;
     }
+    if (picked.id === 'path') {
+      await this.locateCli();
+      return;
+    }
+    const terminal = vscode.window.createTerminal({
+      name: 'Install Alran Code',
+      iconPath: new vscode.ThemeIcon('cloud-download'),
+    });
+    terminal.show();
+    terminal.sendText(picked.id === 'script' ? INSTALL_SCRIPT : INSTALL_NPM);
+    const listener = vscode.window.onDidCloseTerminal((closed) => {
+      if (closed !== terminal) return;
+      listener.dispose();
+      void this.guarded(async () => {
+        await this.restartAgent();
+        await this.account.refresh();
+      });
+    });
+    void vscode.window
+      .showInformationMessage(
+        'Installing the Alran CLI in the terminal. When it has finished, reload the agent.',
+        'Reload Agent',
+      )
+      .then((choice) => {
+        if (choice === 'Reload Agent') void this.guarded(() => this.restartAgent());
+      });
+  }
+
+  private async locateCli(): Promise<void> {
+    const picked = await vscode.window.showOpenDialog({
+      title: 'Select the alran command or its cli.js',
+      canSelectMany: false,
+      openLabel: 'Use This CLI',
+    });
+    const file = picked?.[0];
+    if (!file) return;
+    await this.runtime.configuration.update('executablePath', file.fsPath, vscode.ConfigurationTarget.Global);
+    await this.restartAgent();
+    await this.account.refresh();
   }
 
   // Sessions ----------------------------------------------------------------
@@ -223,6 +304,10 @@ export class AlranActions {
 
   async pickConfig(configId: string): Promise<void> {
     await this.runtime.ensureSession();
+    if (configId === 'model') {
+      await this.pickModel();
+      return;
+    }
     const option = this.findConfig(configId);
     if (!option) {
       void vscode.window.showInformationMessage(`${configId} is not available for this session.`);
@@ -230,13 +315,107 @@ export class AlranActions {
     }
     const picked = await vscode.window.showQuickPick(
       option.options.map((choice) => ({
-        label: choice.name,
-        description: choice.value === option.currentValue ? 'current' : '',
+        label: `${choice.value === option.currentValue ? '$(check) ' : ''}${choice.name}`,
         value: choice.value,
       })),
-      { placeHolder: option.description ?? option.name },
+      { title: option.name, placeHolder: option.description ?? option.name },
     );
     if (picked) await this.setConfig(configId, picked.value);
+  }
+
+  /** The session's models, with the Ottili price and whether the credit covers each. */
+  async pickModel(): Promise<void> {
+    const session = await this.runtime.ensureSession();
+    const option = this.findConfig('model');
+    if (!option) {
+      void vscode.window.showInformationMessage('This session offers no model choice.');
+      return;
+    }
+    if (!this.account.snapshot.models) await this.account.refresh({ usage: true });
+    const catalog = new Map((this.account.snapshot.models ?? []).map((model) => [model.key, model]));
+    const makeDefault: vscode.QuickInputButton = {
+      iconPath: new vscode.ThemeIcon('star-empty'),
+      tooltip: 'Make this the default for new sessions',
+    };
+    type Item = vscode.QuickPickItem & { readonly value?: string };
+    const ottili: Item[] = [];
+    const others: Item[] = [];
+    for (const choice of option.options) {
+      const key = modelKeyFromConfigValue(choice.value);
+      const model = key ? catalog.get(key) : undefined;
+      const current = choice.value === option.currentValue;
+      const item: Item = {
+        // The agent's name carries the variant ("Ottili Werk 1.1 · thinking").
+        label: `${current ? '$(check) ' : ''}${choice.name}`,
+        description: model ? formatModelPrice(model) : key?.split('/')[0],
+        ...(model
+          ? {
+              detail: `${model.status === 'available' ? '$(pass)' : model.status === 'sign in to check' ? '$(info)' : '$(warning)'} ${availabilityLabel(model)}${model.default ? ' · default for new sessions' : ''}`,
+              buttons: model.default ? [] : [makeDefault],
+            }
+          : {}),
+        value: choice.value,
+      };
+      (model ? ottili : others).push(item);
+    }
+    const quickPick = vscode.window.createQuickPick<Item>();
+    quickPick.title = 'Model for this session';
+    quickPick.placeholder = 'Changes apply from the next message. The star makes a model the default.';
+    quickPick.matchOnDescription = true;
+    quickPick.items = [
+      ...(ottili.length ? [{ label: 'Ottili AI Gateway', kind: vscode.QuickPickItemKind.Separator }, ...ottili] : []),
+      ...(others.length ? [{ label: 'Your providers', kind: vscode.QuickPickItemKind.Separator }, ...others] : []),
+    ];
+    quickPick.activeItems = quickPick.items.filter((item) => item.value === option.currentValue);
+    const picked = await new Promise<Item | undefined>((resolve) => {
+      quickPick.onDidTriggerItemButton(({ item }) => {
+        const key = item.value ? modelKeyFromConfigValue(item.value) : undefined;
+        const model = key ? catalog.get(key) : undefined;
+        if (model) void this.guarded(() => this.account.setDefaultModel(model));
+      });
+      quickPick.onDidAccept(() => resolve(quickPick.selectedItems[0]));
+      quickPick.onDidHide(() => resolve(undefined));
+      quickPick.show();
+    });
+    quickPick.dispose();
+    if (!picked?.value || picked.value === option.currentValue) return;
+    const key = modelKeyFromConfigValue(picked.value);
+    const model = key ? catalog.get(key) : undefined;
+    if (model && model.status !== 'available' && model.status !== 'sign in to check') {
+      const add = 'Add Credits';
+      const anyway = 'Use It Anyway';
+      const choice = await vscode.window.showWarningMessage(
+        `${model.name}: ${availabilityLabel(model)}.`,
+        {
+          modal: true,
+          detail:
+            model.status === 'requires purchased credit'
+              ? 'Welcome credit covers Ottili Werk. Claude models are paid with purchased credit; requests without it are refused.'
+              : 'Requests to this model are refused until you add credit.',
+        },
+        add,
+        anyway,
+      );
+      if (choice === add) {
+        await this.account.openBilling();
+        return;
+      }
+      if (choice !== anyway) return;
+    }
+    await session.setConfigOption('model', picked.value);
+  }
+
+  /** Switches the active session to Ottili Werk, which welcome credit covers. */
+  async useWerk(sessionId?: string): Promise<void> {
+    if (sessionId && this.runtime.manager.sessions.has(sessionId)) this.runtime.manager.setActive(sessionId);
+    const option = this.findConfig('model');
+    const werk = option?.options.find((choice) => modelKeyFromConfigValue(choice.value) === 'alran/Alran-Werk');
+    if (!werk) {
+      await this.pickModel();
+      return;
+    }
+    await this.active?.setConfigOption('model', werk.value);
+    this.notify('Switched to Ottili Werk. Send the message again to continue.');
   }
 
   async cyclePermission(): Promise<void> {
@@ -450,30 +629,43 @@ export class AlranActions {
   }
 
   async login(): Promise<void> {
-    const terminal = await this.runInTerminal(['login']);
-    const listener = vscode.window.onDidCloseTerminal((closed) => {
-      if (closed !== terminal) return;
-      listener.dispose();
-      void this.afterAccountChange();
-    });
-  }
-
-  private async afterAccountChange(): Promise<void> {
-    await this.guarded(async () => {
-      await this.runtime.manager.restart();
-      if (!this.runtime.manager.active) await this.runtime.ensureSession();
-    });
+    await this.account.signIn();
   }
 
   async logout(): Promise<void> {
-    const confirm = 'Sign Out';
-    const choice = await vscode.window.showWarningMessage('Sign out of Alran Code?', { modal: true }, confirm);
-    if (choice !== confirm) return;
-    await this.runInTerminal(['logout']);
+    await this.account.signOut();
+  }
+
+  /** Restarts the agent so new credentials take effect, and reopens a chat. */
+  async afterAccountChange(): Promise<void> {
+    const manager = this.runtime.manager;
+    if (manager.connection.state === 'disconnected' || manager.connection.state === 'missing-binary') return;
+    await this.guarded(async () => {
+      await manager.restart();
+      if (!manager.active) await this.runtime.ensureSession();
+    });
   }
 
   async update(): Promise<void> {
-    await this.runInTerminal(['update']);
+    const busy = [...this.runtime.manager.sessions.values()].some((session) => session.busy);
+    if (busy) {
+      const proceed = 'Update Anyway';
+      const choice = await vscode.window.showWarningMessage(
+        'A task is running. Updating restarts the agent and stops it.',
+        { modal: true },
+        proceed,
+      );
+      if (choice !== proceed) return;
+    }
+    const terminal = await this.runInTerminal(['update']);
+    const listener = vscode.window.onDidCloseTerminal((closed) => {
+      if (closed !== terminal) return;
+      listener.dispose();
+      void this.guarded(async () => {
+        await this.restartAgent();
+        await this.account.refresh();
+      });
+    });
   }
 
   async mascot(): Promise<void> {
@@ -487,8 +679,7 @@ export class AlranActions {
   }
 
   private dataDir(): string {
-    const env = this.runtime.configuration.get<Record<string, string>>('env', {});
-    return env.ALRAN_DATA_DIR ?? process.env.ALRAN_DATA_DIR ?? path.join(homeDirectory(), '.alran');
+    return this.runtime.dataDir();
   }
 
   async openConfigFile(): Promise<void> {
@@ -517,11 +708,15 @@ export class AlranActions {
 
   async showChangelog(): Promise<void> {
     const cli = await this.runtime.resolveCli();
-    const entry = cli.prefixArgs[0] ?? cli.displayPath;
+    const entry = await realpath(cli.prefixArgs[0] ?? cli.displayPath).catch(() => cli.prefixArgs[0] ?? cli.displayPath);
+    const directory = path.dirname(entry);
     for (const candidate of [
-      path.join(path.dirname(entry), 'CHANGELOG.md'),
-      path.join(path.dirname(entry), '..', 'CHANGELOG.md'),
-      path.join(path.dirname(entry), '..', 'lib', 'node_modules', '@ottili', 'alran-code', 'CHANGELOG.md'),
+      path.join(directory, 'chunks', 'CHANGELOG.md'),
+      path.join(directory, 'CHANGELOG.md'),
+      path.join(directory, '..', 'CHANGELOG.md'),
+      path.join(directory, '..', 'packages', 'tui', 'CHANGELOG.md'),
+      path.join(directory, '..', 'lib', 'node_modules', 'alran', 'dist', 'chunks', 'CHANGELOG.md'),
+      path.join(directory, '..', 'lib', 'node_modules', 'alran', 'CHANGELOG.md'),
     ]) {
       const content = await readFile(candidate, 'utf8').catch(() => undefined);
       if (content !== undefined) {
@@ -534,8 +729,4 @@ export class AlranActions {
     }
     await this.openTui('/changelog');
   }
-}
-
-function homeDirectory(): string {
-  return process.env.HOME ?? process.env.USERPROFILE ?? '';
 }

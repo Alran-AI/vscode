@@ -2,10 +2,12 @@ import path from 'node:path';
 
 import * as vscode from 'vscode';
 
+import { formatMicroUsd, formatModelPrice } from '../core/account';
 import * as cli from '../core/cli';
 import type { FileChange } from '../core/changes';
 import type { PersistedSessionInfo } from '../core/manager';
 import type { DelegationMemberView, MentionCandidate, SessionStatus } from '../shared/types';
+import { availabilityLabel, type AccountService } from './account';
 import { parseMcpList } from './parseMcp';
 import type { AlranRuntime } from './runtime';
 
@@ -326,4 +328,289 @@ export class CapabilitiesTree extends RefreshableTree<CapabilityNode> {
     const providers = await cli.providers.list(context);
     return providers.providers.map((provider) => ({ kind: 'provider', provider }));
   }
+}
+
+export type AccountNode =
+  | {
+      readonly kind: 'row';
+      readonly id: string;
+      readonly label: string;
+      readonly description?: string;
+      readonly tooltip?: string;
+      readonly icon: string;
+      readonly command?: vscode.Command;
+      readonly contextValue?: string;
+      readonly children?: readonly AccountNode[];
+    };
+
+/** The Ottili account at a glance: who, where, which model, how much credit. */
+export class AccountTree extends RefreshableTree<AccountNode> {
+  constructor(
+    private readonly runtime: AlranRuntime,
+    private readonly account: AccountService,
+  ) {
+    super();
+    this.disposables.push(
+      account.onDidChange(() => this.refresh()),
+      runtime.onDidChangeConnection(() => this.refresh()),
+    );
+  }
+
+  getTreeItem(element: AccountNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      element.label,
+      element.children?.length ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+    );
+    item.id = element.id;
+    if (element.description) item.description = element.description;
+    item.tooltip = element.tooltip ?? (element.description ? `${element.label}: ${element.description}` : element.label);
+    item.iconPath = new vscode.ThemeIcon(element.icon);
+    if (element.command) item.command = element.command;
+    if (element.contextValue) item.contextValue = element.contextValue;
+    return item;
+  }
+
+  getChildren(element?: AccountNode): AccountNode[] {
+    if (element) return [...(element.children ?? [])];
+    const snapshot = this.account.snapshot;
+    const rows: AccountNode[] = [];
+    const run = (command: string, title: string): vscode.Command => ({ command, title });
+    const { status, credits, models } = snapshot;
+    if (snapshot.unsupported) {
+      return [
+        {
+          kind: 'row',
+          id: 'account.unsupported',
+          label: 'Update the Alran CLI to manage your account here',
+          icon: 'warning',
+          command: run('alran.update', 'Update'),
+        },
+      ];
+    }
+    if (!status) {
+      if (snapshot.error === 'The Alran CLI is not installed.') {
+        return [
+          {
+            kind: 'row',
+            id: 'account.nocli',
+            label: 'Install the Alran CLI to get started',
+            tooltip: 'Alran Code runs the Alran CLI on this machine. Click to install it or point the extension at it.',
+            icon: 'cloud-download',
+            command: run('alran.installCli', 'Install'),
+          },
+        ];
+      }
+      return snapshot.error
+        ? [{ kind: 'row', id: 'account.error', label: snapshot.error, icon: 'warning', command: run('alran.refreshAccount', 'Retry') }]
+        : [];
+    }
+    if (!status.signedIn) {
+      const credential = snapshot.credential;
+      if (credential?.kind === 'api-key') {
+        return [
+          {
+            kind: 'row',
+            id: 'account.apikey',
+            label: 'Ottili API key',
+            description: credential.masked ?? 'saved',
+            tooltip: 'Model calls use this API key and its project. Sign in to see credit, usage and billing here.',
+            icon: 'key',
+          },
+          {
+            kind: 'row',
+            id: 'account.signin',
+            label: 'Sign in for credit, usage and billing',
+            icon: 'account',
+            command: run('alran.login', 'Sign In'),
+          },
+          { kind: 'row', id: 'account.billing', label: 'Billing and invoices', icon: 'link-external', command: run('alran.openBilling', 'Open Billing') },
+        ];
+      }
+      if (credential?.kind === 'provider') {
+        return [
+          {
+            kind: 'row',
+            id: 'account.provider',
+            label: 'Your provider',
+            description: credential.name,
+            tooltip: 'Model calls go directly to this provider with your own key. Ottili does not see or bill them.',
+            icon: 'server',
+            command: run('alran.capabilities.focus', 'Show Providers'),
+          },
+          {
+            kind: 'row',
+            id: 'account.signin',
+            label: 'Sign in to use Ottili models',
+            icon: 'account',
+            command: run('alran.login', 'Sign In'),
+          },
+        ];
+      }
+      return [];
+    }
+    const name = status.name ?? 'Ottili account';
+    rows.push({
+      kind: 'row',
+      id: 'account.user',
+      label: name,
+      description: status.environment && status.environment !== 'production' ? status.environment : undefined,
+      tooltip: [
+        `Signed in as ${name}`,
+        status.platform ? `Platform: ${status.platform}` : '',
+        status.gateway ? `Gateway: ${status.gateway}` : '',
+        status.sessionExpiresAt ? `Session valid until ${new Date(status.sessionExpiresAt).toLocaleString()}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      icon: 'account',
+      contextValue: 'account.user',
+    });
+    rows.push({
+      kind: 'row',
+      id: 'account.company',
+      label: 'Company',
+      description: snapshot.companyName ?? status.companyId ?? '—',
+      tooltip: status.companyId ? `Company ${status.companyId}. Model calls, usage and billing use it. Click to switch.` : undefined,
+      icon: 'organization',
+      command: run('alran.switchCompany', 'Switch Company'),
+      contextValue: 'account.company',
+    });
+    rows.push({
+      kind: 'row',
+      id: 'account.project',
+      label: 'Project',
+      description: status.projectId ?? 'Default project',
+      icon: 'project',
+      command: run('alran.selectProject', 'Choose Project'),
+      contextValue: 'account.project',
+    });
+    const defaultModel = models?.find((model) => model.default);
+    rows.push({
+      kind: 'row',
+      id: 'account.model',
+      label: 'Default model',
+      description: defaultModel?.name ?? readableModelKey(status.defaultModel),
+      icon: 'hubot',
+      command: run('alran.pickDefaultModel', 'Choose Default Model'),
+      contextValue: 'account.model',
+      children: (models ?? []).map((model) => ({
+        kind: 'row' as const,
+        id: `account.model.${model.key}`,
+        label: model.name,
+        description: `${formatModelPrice(model)} · ${availabilityLabel(model)}`,
+        tooltip: `${model.description}\n${formatModelPrice(model)}\nPaid with ${model.credit}`,
+        icon: model.default ? 'star-full' : model.status === 'available' ? 'pass' : 'warning',
+      })),
+    });
+    if (credits) {
+      const available = credits.available_microcents ?? 0;
+      rows.push({
+        kind: 'row',
+        id: 'account.credits',
+        label: 'Credit',
+        description: `${formatMicroUsd(available)} available`,
+        icon: available < 500_000 ? 'warning' : 'credit-card',
+        contextValue: 'account.credits',
+        children: [
+          {
+            kind: 'row',
+            id: 'account.credits.welcome',
+            label: 'Welcome credit',
+            description: `${formatMicroUsd(credits.free_credit?.remaining_microcents)} of ${formatMicroUsd(credits.free_credit?.granted_microcents)} · Werk only`,
+            icon: 'gift',
+          },
+          {
+            kind: 'row',
+            id: 'account.credits.paid',
+            label: 'Purchased credit',
+            description: `${formatMicroUsd(credits.paid_credit?.available_microcents)} · all models`,
+            icon: 'credit-card',
+          },
+          ...(credits.reserved_microcents
+            ? [
+                {
+                  kind: 'row' as const,
+                  id: 'account.credits.reserved',
+                  label: 'Reserved for running requests',
+                  description: formatMicroUsd(credits.reserved_microcents),
+                  icon: 'clock',
+                },
+              ]
+            : []),
+          {
+            kind: 'row',
+            id: 'account.credits.add',
+            label: 'Add credit…',
+            icon: 'add',
+            command: run('alran.openBilling', 'Add Credit'),
+          },
+        ],
+      });
+      const month = credits.current_month;
+      const byModel = month?.by_model ?? [];
+      rows.push({
+        kind: 'row',
+        id: 'account.month',
+        label: 'Spent this month',
+        description: formatMicroUsd(month?.total_cost_microcents ?? 0),
+        tooltip: month?.from ? `Since ${month.from.slice(0, 10)}` : undefined,
+        icon: 'graph',
+        children: byModel.length
+          ? byModel.map((row) => ({
+              kind: 'row' as const,
+              id: `account.month.${row.model}`,
+              label: row.model,
+              description: `${formatMicroUsd(row.cost_microcents)} · ${String(row.requests)} request${row.requests === 1 ? '' : 's'}`,
+              tooltip: `${String((row.input_tokens ?? 0) + (row.output_tokens ?? 0))} tokens${row.service_fee_microcents ? `\nService fee ${formatMicroUsd(row.service_fee_microcents)}` : ''}`,
+              icon: 'symbol-number',
+            }))
+          : [{ kind: 'row' as const, id: 'account.month.none', label: 'No requests yet this month', icon: 'info' }],
+      });
+    }
+    const billing = snapshot.billing;
+    const method = billing?.payment_methods.find((entry) => entry.default) ?? billing?.payment_methods[0];
+    rows.push({
+      kind: 'row',
+      id: 'account.billing',
+      label: 'Billing and invoices',
+      description: billing ? [billing.plan === 'pay-per-use' ? 'Prepaid credit' : billing.plan, method?.label].filter(Boolean).join(' · ') : undefined,
+      tooltip: billing
+        ? `Plan: ${billing.plan}\nPayment method: ${method?.label ?? 'none on file'}\nManage at ${billing.manage_at}`
+        : 'Add credit, change the payment method and download invoices',
+      icon: 'link-external',
+      command: run('alran.openBilling', 'Open Billing'),
+    });
+    const version = this.runtime.manager.agentVersion;
+    if (version) {
+      const outdated = snapshot.latestVersion && compareVersions(snapshot.latestVersion, version) > 0;
+      rows.push({
+        kind: 'row',
+        id: 'account.cli',
+        label: 'Alran CLI',
+        description: outdated ? `${version} · ${snapshot.latestVersion ?? ''} available` : version,
+        icon: outdated ? 'cloud-download' : 'terminal',
+        ...(outdated ? { command: run('alran.update', 'Update') } : {}),
+      });
+    }
+    return rows;
+  }
+}
+
+/** Compares dotted versions numerically; prerelease suffixes are ignored. */
+export function compareVersions(left: string, right: string): number {
+  const parts = (value: string) => value.replace(/^v/u, '').split(/[.-]/u).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
+  const [a, b] = [parts(left), parts(right)];
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+/** "custom_provider:fixture/fixture" → "fixture · your provider fixture". */
+export function readableModelKey(key: string | undefined): string {
+  if (!key) return '—';
+  const custom = /^custom_provider:([^/]+)\/(.+)$/u.exec(key);
+  if (custom) return `${custom[2] ?? key} · your provider`;
+  return key.replace(/^alran\//u, '');
 }

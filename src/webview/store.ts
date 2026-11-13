@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 
 import type { HostMessage, WebviewMessage } from '../shared/protocol';
 import type {
+  AccountView,
   ChatPreferences,
   ComposerAttachment,
   ConnectionState,
@@ -27,6 +28,9 @@ export interface ChatState {
   items: readonly TranscriptItem[];
   preferences: ChatPreferences;
   activeFile?: string;
+  account: AccountView;
+  /** `sidebar` for the view, `panel` for a chat opened in an editor tab. */
+  surface: 'sidebar' | 'panel';
 }
 
 let state: ChatState = {
@@ -34,6 +38,8 @@ let state: ChatState = {
   tabs: [],
   meta: null,
   items: [],
+  account: { state: 'unknown' },
+  surface: document.body.dataset.surface === 'panel' ? 'panel' : 'sidebar',
   preferences: {
     enterWhileRunning: 'steer',
     showThinking: true,
@@ -120,6 +126,9 @@ export function handleHostMessage(message: HostMessage): void {
       break;
     case 'focusComposer':
       composerEvents.focus?.();
+      break;
+    case 'account':
+      update({ account: message.account });
       break;
   }
 }

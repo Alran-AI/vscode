@@ -5,7 +5,18 @@ import path from 'node:path';
 
 import * as vscode from 'vscode';
 
+import { modelKeyFromConfigValue } from '../../../src/core/account';
+import type { SessionController } from '../../../src/core/session';
 import type { AlranExtensionApi } from '../../../src/extension';
+
+async function chooseModel(session: SessionController, key: string, variant = ''): Promise<void> {
+  const option = session.meta.config.find((entry) => entry.id === 'model');
+  const choice = option?.options.find(
+    (entry) => modelKeyFromConfigValue(entry.value) === key && entry.value.endsWith(`:v:${variant}`),
+  );
+  assert.ok(choice, `model ${key} is offered`);
+  await session.setConfigOption('model', choice.value);
+}
 
 const workspace = process.env.ALRAN_E2E_WORKSPACE ?? '';
 const screenshotDir = process.env.ALRAN_E2E_SCREENSHOT_DIR ?? '';
@@ -31,6 +42,22 @@ function screenshot(name: string): void {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const marketingDir = process.env.ALRAN_E2E_MARKETING_DIR ?? '';
+
+/** A clean shot for the README: no notifications, no secondary side bar. */
+async function marketingShot(name: string): Promise<void> {
+  if (!marketingDir) return;
+  await vscode.commands.executeCommand('notifications.clearAll').then(undefined, () => undefined);
+  await sleep(500);
+  try {
+    execFileSync('python3', [
+      '-c',
+      `from PIL import ImageGrab; ImageGrab.grab(xdisplay=${JSON.stringify(process.env.DISPLAY)}).save(${JSON.stringify(path.join(marketingDir, `${name}.png`))})`,
+    ]);
+  } catch (error) {
+    console.warn(`marketing screenshot failed: ${String(error)}`);
+  }
+}
 
 const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
   [
@@ -232,6 +259,174 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
     },
   ],
   [
+    'shows the account view and detects the own provider',
+    async (api) => {
+      await waitFor('account', () => api.account.snapshot.status !== undefined && !api.account.snapshot.loading, 30_000);
+      assert.equal(api.account.snapshot.status?.signedIn, false);
+      assert.deepEqual(api.account.snapshot.credential, { kind: 'provider', name: 'fixture' });
+      const rows = api.trees.account.getChildren();
+      assert.ok(rows.some((row) => row.id === 'account.provider'));
+      await vscode.commands.executeCommand('alran.account.focus');
+      await sleep(600);
+      screenshot('08-account-signed-out');
+    },
+  ],
+  [
+    'signs in with a device code from the editor',
+    async (api) => {
+      const ottili = process.env.ALRAN_E2E_OTTILI ?? '';
+      const signedIn = api.account.signIn({ flow: 'device' });
+      await waitFor('device code shown', async () => {
+        const state = (await (await fetch(`${ottili}/__test/state`)).json()) as { calls: string[] };
+        return state.calls.includes('POST /v1/auth/device');
+      });
+      await sleep(1_200);
+      screenshot('09-device-code');
+      const opened = readFileSync(process.env.ALRAN_TEST_OPEN_EXTERNAL_LOG ?? '', 'utf8');
+      assert.match(opened, /\/device\?user_code=BCDF-GHJK/u, 'the confirmation page opens with the code filled in');
+      await fetch(`${ottili}/__test/approve`, { method: 'POST' });
+      const result = await signedIn;
+      const state = (await (await fetch(`${ottili}/__test/state`)).json()) as unknown;
+      const diagnostics = JSON.stringify({ result, snapshot: api.account.snapshot, state }).slice(0, 3000);
+      assert.equal(result, true, diagnostics);
+      assert.equal(api.account.snapshot.status?.name, 'Test Person', diagnostics);
+      await waitFor('credits', () => api.account.snapshot.credits?.available_microcents === 4_800_000);
+      await waitFor('agent back', () => api.runtime.manager.connection.state === 'connected' && api.runtime.manager.active?.meta.status === 'idle', 60_000);
+      const rows = api.trees.account.getChildren();
+      assert.deepEqual(
+        rows.map((row) => row.id),
+        ['account.user', 'account.company', 'account.project', 'account.model', 'account.credits', 'account.month', 'account.billing', 'account.cli'],
+      );
+      await vscode.commands.executeCommand('alran.account.focus');
+      await vscode.commands.executeCommand('list.expandAll').then(undefined, () => undefined);
+      await sleep(800);
+      screenshot('10-account-signed-in');
+      const [accountSession] = await api.authProvider.getSessions();
+      assert.equal(accountSession?.account.label, 'Test Person');
+      assert.equal(accountSession?.accessToken, '', 'the Platform session never leaves the CLI');
+    },
+  ],
+  [
+    'shows prices and availability in the model picker',
+    async (api) => {
+      await api.account.refresh({ usage: true });
+      const picking = vscode.commands.executeCommand('alran.pickModel');
+      await sleep(1_200);
+      screenshot('11-model-picker');
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+      await picking;
+      assert.ok(api.account.snapshot.models?.some((model) => model.status === 'requires purchased credit'));
+    },
+  ],
+  [
+    'turns a failed turn into a card with actions',
+    async (api) => {
+      const session = api.runtime.manager.active!;
+      await api.actions.sendPrompt({ text: 'DO_FAIL_402 please', attachments: [] });
+      await waitFor('failure', () => session.model.items.some((item) => item.kind === 'notice' && item.failure !== undefined), 90_000);
+      await waitFor('idle', () => session.meta.status === 'idle');
+      const notice = session.model.items.findLast((item) => item.kind === 'notice');
+      assert.equal(notice?.kind === 'notice' && notice.failure?.kind, 'model-restricted');
+      await vscode.commands.executeCommand('alran.chat.focus');
+      await sleep(600);
+      screenshot('12-failure-card');
+    },
+  ],
+  [
+    'answers @alran in the editor chat without taking over the sidebar',
+    async (api) => {
+      const participant = api.chatParticipant;
+      if (!participant) {
+        console.log('      (no Chat view in this editor; skipped)');
+        return;
+      }
+      const activeBefore = api.runtime.manager.activeId;
+      const markdown: string[] = [];
+      const progress: string[] = [];
+      const buttons: string[] = [];
+      const stream = {
+        markdown: (value: string | vscode.MarkdownString) => markdown.push(typeof value === 'string' ? value : value.value),
+        progress: (value: string) => progress.push(value),
+        button: (command: vscode.Command) => buttons.push(command.command),
+        reference: () => undefined,
+        anchor: () => undefined,
+        filetree: () => undefined,
+        push: () => undefined,
+      } as unknown as vscode.ChatResponseStream;
+      const request = { prompt: 'hello from the editor chat', command: undefined, references: [] } as unknown as vscode.ChatRequest;
+      const token = new vscode.CancellationTokenSource().token;
+      const result = (await participant.handler(request, { history: [] } as unknown as vscode.ChatContext, stream, token)) as vscode.ChatResult;
+      assert.match(markdown.join(''), /Echo/u);
+      const sessionId = (result.metadata as { alranSessionId?: string }).alranSessionId;
+      assert.ok(sessionId && api.runtime.manager.sessions.has(sessionId));
+      assert.equal(api.runtime.manager.activeId, activeBefore, 'the sidebar chat keeps its tab');
+      assert.ok(buttons.includes('alran.showSession'));
+      await api.runtime.manager.closeSession(sessionId);
+    },
+  ],
+  [
+    'captures the README screenshots',
+    async (api) => {
+      if (!marketingDir) return;
+      await vscode.commands.executeCommand('workbench.action.closeAuxiliaryBar').then(undefined, () => undefined);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.commands.executeCommand('workbench.action.closePanel').then(undefined, () => undefined);
+      await api.actions.newSession();
+      const session = api.runtime.manager.active!;
+      await waitFor('idle', () => session.meta.status === 'idle');
+      const source = path.join(workspace, 'src', 'date.ts');
+      await vscode.commands.executeCommand('workbench.action.closeSidebar');
+      await vscode.window.showTextDocument(vscode.Uri.file(source), { preview: false, viewColumn: vscode.ViewColumn.One });
+      api.hub.openInEditor();
+      await waitFor('panel ready', () => api.hub.readySurfaceCount > 1, 30_000);
+      await session.setConfigOption('permissionMode', 'auto');
+      await chooseModel(session, 'alran/Alran-Werk');
+      await api.actions.sendPrompt({ text: 'Make parseDate reject invalid dates', attachments: [] });
+      await waitFor('demo reply', () => session.model.lastAssistantText()?.includes('Changes') === true, 60_000);
+      await waitFor('idle', () => session.meta.status === 'idle');
+      await sleep(1_000);
+      await marketingShot('chat');
+
+      await session.setConfigOption('permissionMode', 'default');
+      void api.actions.sendPrompt({ text: 'Also copy the result to the shared folder', attachments: [] });
+      await waitFor('permission', () => session.meta.status === 'awaiting-input', 30_000);
+      await sleep(600);
+      await marketingShot('permission');
+      const request = session.model.items.findLast((item) => item.kind === 'permission' && !item.resolution);
+      if (request) session.answerPermission(request.id, 'deny');
+      await waitFor('idle', () => session.meta.status === 'idle', 30_000);
+
+      await vscode.commands.executeCommand('alran.account.focus');
+      await sleep(600);
+      const picking = vscode.commands.executeCommand('alran.pickModel');
+      await sleep(1_200);
+      await marketingShot('account');
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+      await picking;
+
+      await vscode.commands.executeCommand('workbench.action.closeSidebar');
+      await chooseModel(session, 'alran/anthropic/claude-opus-5.5', 'thinking');
+      await api.actions.sendPrompt({ text: 'Now review the whole module with Claude Opus', attachments: [] });
+      await waitFor('failure', () => session.model.items.some((item) => item.kind === 'notice' && item.failure !== undefined), 90_000);
+      await waitFor('idle', () => session.meta.status === 'idle');
+      await sleep(600);
+      await marketingShot('failure');
+      await session.changes.revert(source).catch(() => undefined);
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    },
+  ],
+  [
+    'signs out and revokes the session',
+    async (api) => {
+      const ottili = process.env.ALRAN_E2E_OTTILI ?? '';
+      assert.equal(await api.account.signOut({ confirm: false }), true);
+      assert.equal(api.account.snapshot.status?.signedIn, false);
+      const state = (await (await fetch(`${ottili}/__test/state`)).json()) as { revoked: string[] };
+      assert.equal(state.revoked.length, 1);
+      await waitFor('agent back', () => api.runtime.manager.connection.state === 'connected' && api.runtime.manager.active?.meta.status === 'idle', 60_000);
+    },
+  ],
+  [
     'restarts the agent and reattaches',
     async (api) => {
       const session = api.runtime.manager.active!;
@@ -244,12 +439,34 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
   ],
 ];
 
+/** Without the CLI, the extension must say so and offer the installation. */
+async function runWithoutCli(api: AlranExtensionApi): Promise<void> {
+  await sleep(2_500);
+  screenshot('00-no-cli-notice');
+  await vscode.commands.executeCommand('alran.chat.focus');
+  await waitFor('webview ready', () => api.hub.readySurfaceCount > 0, 60_000);
+  await waitFor('missing binary', () => api.runtime.manager.connection.state === 'missing-binary', 30_000);
+  await waitFor('account row', () => api.trees.account.getChildren().some((row) => row.id === 'account.nocli'), 30_000);
+  await vscode.commands.executeCommand('alran.account.focus');
+  await sleep(800);
+  screenshot('00-no-cli-card');
+  await sleep(3_000);
+  screenshot('00-no-cli-card-later');
+  console.log('  ok  explains that the Alran CLI is required');
+}
+
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension<AlranExtensionApi>('ottili.alran-vscode');
   assert.ok(extension, 'extension is installed');
   const api = await extension.activate();
+  if (process.env.ALRAN_E2E_NO_CLI) {
+    await runWithoutCli(api);
+    return;
+  }
   const failures: string[] = [];
+  const only = process.env.ALRAN_E2E_ONLY ? new RegExp(process.env.ALRAN_E2E_ONLY, 'u') : undefined;
   for (const [name, step] of steps) {
+    if (only && !only.test(name) && !/boots the webview/u.test(name)) continue;
     try {
       await step(api);
       console.log(`  ok  ${name}`);

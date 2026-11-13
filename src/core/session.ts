@@ -11,6 +11,7 @@ import {
   type GoalPatch,
   type RuntimeQueueItem,
 } from '../acp/agent';
+import { describeFailure, type FailureView } from '../shared/errors';
 import { isRecord, SessionModel, toConfigViews, toModeViews } from '../shared/model';
 import { AGENT_HANDLED_COMMANDS, parseSlash } from '../shared/commands';
 import type {
@@ -48,6 +49,8 @@ export interface SessionListener {
   /** A turn started or ended, for the file watcher that attributes changes. */
   turn(sessionId: string, running: boolean): void;
   authRequired(): void;
+  /** Diagnostics for the output channel. */
+  log(line: string): void;
 }
 
 export interface SessionServices {
@@ -414,16 +417,32 @@ export class SessionController {
     if (failure !== undefined) {
       this.meta.canRetry = true;
       if (isAuthRequired(failure)) {
-        this.pushNotice('error', 'Sign in to Alran Code to continue.', { authRequired: true });
+        this.pushNotice('error', 'Sign in to Alran Code to continue.', {
+          authRequired: true,
+          failure: {
+            kind: 'auth',
+            title: 'Sign in to continue',
+            detail: 'Alran needs your Ottili account, or a model provider with your own API key. Your message is kept.',
+            actions: ['sign-in', 'provider-settings'],
+            retryable: true,
+          },
+        });
         this.services.listener.authRequired();
       } else {
         const message = errorMessage(failure);
-        this.pushNotice('error', message, { retryable: true });
+        const view = describeFailure(message);
+        this.services.listener.log(`turn failed: ${message}`);
+        this.pushNotice('error', message, {
+          retryable: view.retryable,
+          ...(view.kind === 'auth' ? { authRequired: true } : {}),
+          failure: view,
+        });
+        if (view.kind === 'auth') this.services.listener.authRequired();
         this.services.listener.attention({
           kind: 'turn-failed',
           sessionId: this.id,
           title: this.displayTitle,
-          detail: message,
+          detail: view.title,
         });
       }
     } else if (stopReason === 'cancelled') {
@@ -669,7 +688,11 @@ export class SessionController {
   pushNotice(
     level: 'info' | 'warning' | 'error',
     text: string,
-    options: { readonly retryable?: boolean; readonly authRequired?: boolean } = {},
+    options: {
+      readonly retryable?: boolean;
+      readonly authRequired?: boolean;
+      readonly failure?: FailureView;
+    } = {},
   ): void {
     const notice = this.model.push({
       kind: 'notice',
@@ -679,6 +702,7 @@ export class SessionController {
       timestamp: Date.now(),
       ...(options.retryable ? { retryable: true } : {}),
       ...(options.authRequired ? { authRequired: true } : {}),
+      ...(options.failure ? { failure: options.failure } : {}),
     });
     this.emitItems([notice]);
   }

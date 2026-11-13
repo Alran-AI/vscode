@@ -36,7 +36,8 @@ The agent is always the Alran Code runtime (`alran acp`). This page records how 
 | `/tasks` | ACP, TUI | Agents view lists sub-agents; background Bash tasks need the TUI |
 | `/provider` | CLI | Capabilities view: list, add, remove, test, credential source, API key |
 | `/plugins` | CLI | Capabilities view: list, install, enable, disable, remove, refresh sources |
-| `/login`, `/logout`, `/update`, `/mascot` | CLI | Integrated terminal |
+| `/login`, `/logout` | CLI | In the editor: `alran auth login` runs without a terminal (browser or device code), `alran auth logout` revokes the session; Accounts menu |
+| `/update`, `/mascot` | CLI | Integrated terminal; the agent reloads after an update |
 | `/reload` | Native | Restarts the agent and reattaches open Sessions |
 | `/settings` | Native, TUI | Extension settings, `config.yaml`, or the TUI panel |
 | `/hotkeys` | Native | Editor keyboard shortcuts |
@@ -46,6 +47,21 @@ The agent is always the Alran Code runtime (`alran acp`). This page records how 
 | `/rewind`, `/edit`, `/rename`, `/history`, `/add-dir`, `/feedback`, `/statusline`, `/theme` | TUI | ACP has no equivalent |
 
 Skills appear as slash commands, as in the TUI. Built-in names take priority over Skills with the same name.
+
+## Account commands
+
+| Command | Route | In the editor |
+| --- | --- | --- |
+| `alran auth login` (`--device`, `--api-key`) | CLI | Sign-in notification with cancel; device code page opens with the code filled in; API key from a password box via stdin |
+| `alran auth status` | CLI | Account view, status bar tooltip, Accounts menu |
+| `alran auth switch-company`, `alran config company` | CLI | **Alran: Switch Company…** |
+| `alran config project` | CLI | **Alran: Choose Project…** |
+| `alran config model`, `alran models --set-default` | CLI | **Alran: Choose Default Model…**, star button in the model picker |
+| `alran models` | CLI | Prices and availability in the model picker and the Account view |
+| `alran usage` | CLI | Credit and this month's spending in the Account view |
+| `alran billing` | CLI | Plan and payment method in the Account view; **Alran: Add Credit and Manage Billing** |
+| `alran provider …`, `alran plugin …` | CLI | Capabilities view |
+| `alran telemetry status`, `preview` | CLI | Output channel |
 
 ## Other capabilities
 
@@ -65,6 +81,8 @@ Skills appear as slash commands, as in the TUI. Built-in names take priority ove
 | Terminal titles, OSC notifications | Native | Status bar, tab status, `alran.notifications.*` |
 | Telemetry inspection | CLI | **Alran: Show Telemetry Status**, **Preview Telemetry Payload** |
 | Headless `alran exec` | Terminal | Unchanged; the extension does not wrap it |
+| `@alran` in the editor's Chat view | ACP | One Alran session per chat conversation, continued in the Alran panel |
+| Terminal UI | Native | *Alran Code* terminal profile |
 
 ## Editor-only additions
 

@@ -1,7 +1,9 @@
 **
 !dist/extension.cjs
 !dist/webview/**
-!media/**
+!media/icon.png
+!media/activitybar.svg
+!media/walkthrough/**
 !docs/feature-parity.md
 !package.json
 !README.md

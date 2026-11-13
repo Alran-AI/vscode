@@ -1,4 +1,6 @@
+import type { FailureAction } from './errors';
 import type {
+  AccountView,
   ChatPreferences,
   ComposerAttachment,
   ConnectionState,
@@ -25,7 +27,8 @@ export type HostMessage =
     }
   | { readonly type: 'addAttachments'; readonly attachments: readonly ComposerAttachment[] }
   | { readonly type: 'setDraft'; readonly text: string; readonly send?: boolean }
-  | { readonly type: 'focusComposer' };
+  | { readonly type: 'focusComposer' }
+  | { readonly type: 'account'; readonly account: AccountView };
 
 export type QueueOperation =
   | { readonly op: 'delete'; readonly id: string }
@@ -82,5 +85,6 @@ export type WebviewMessage =
   | { readonly type: 'goal'; readonly operation: GoalOperation }
   | { readonly type: 'stopDelegation' }
   | { readonly type: 'openSubagent'; readonly sessionId: string }
-  | { readonly type: 'signIn' }
+  | { readonly type: 'signIn'; readonly method?: 'default' | 'options' | 'api-key' | 'provider' }
+  | { readonly type: 'failureAction'; readonly action: FailureAction }
   | { readonly type: 'command'; readonly command: string; readonly args?: readonly unknown[] };
