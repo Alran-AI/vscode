@@ -102,8 +102,9 @@ export async function openToolDiff(
 export async function openPermissionPreview(
   documents: VirtualDocuments,
   item: PermissionItem,
+  cwd?: string,
 ): Promise<boolean> {
-  const edit = await proposedEdit(item.input);
+  const edit = await proposedEdit(item.input, cwd);
   if (!edit) return false;
   const name = basename(edit.path);
   await vscode.commands.executeCommand(

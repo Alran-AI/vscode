@@ -1012,13 +1012,13 @@
         "alran.executablePath": {
           "type": "string",
           "default": "",
-          "scope": "machine-overridable",
+          "scope": "machine",
           "markdownDescription": "Path to the `alran` CLI or its `cli.js`. Leave empty to search `PATH`, the login shell, and standard install locations."
         },
         "alran.nodePath": {
           "type": "string",
           "default": "",
-          "scope": "machine-overridable",
+          "scope": "machine",
           "description": "Node.js executable used when alran.executablePath points at a JavaScript file. Alran needs Node 22.19 or newer."
         },
         "alran.env": {
@@ -1027,13 +1027,13 @@
           "additionalProperties": {
             "type": "string"
           },
-          "scope": "machine-overridable",
+          "scope": "machine",
           "markdownDescription": "Extra environment variables for the agent, for example `ALRAN_DATA_DIR`."
         },
         "alran.lane": {
           "type": "string",
           "default": "",
-          "scope": "machine-overridable",
+          "scope": "machine",
           "description": "Managed backend lane, for test or staging builds only."
         },
         "alran.autoConnect": {
@@ -1064,6 +1064,7 @@
         "alran.mcpServers": {
           "type": "array",
           "default": [],
+          "scope": "machine",
           "markdownDescription": "MCP servers added to every session from this editor, in ACP format: `{ \"name\", \"command\", \"args\": [], \"env\": [] }` or `{ \"type\": \"http\"|\"sse\", \"name\", \"url\", \"headers\": [] }`.",
           "items": {
             "type": "object"
@@ -1104,6 +1105,7 @@
         "alran.confirmFullAccess": {
           "type": "boolean",
           "default": true,
+          "scope": "machine",
           "description": "Ask for confirmation before switching to the Full Access permission mode."
         },
         "alran.notifications.when": {

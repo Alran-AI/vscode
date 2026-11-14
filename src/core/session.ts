@@ -619,6 +619,8 @@ export class SessionController {
     const interaction = this.interactions.get(id);
     if (interaction?.item.kind !== 'permission') return;
     const option = interaction.item.options.find((candidate) => candidate.id === optionId);
+    // An id that was never offered is not an answer: the agent would take it as a choice the user made.
+    if (optionId !== null && !option) return;
     interaction.answer({ optionId, label: option?.name ?? 'Dismissed' });
   }
 

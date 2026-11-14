@@ -497,13 +497,20 @@ async function withBusy<T>(title: string, run: () => Promise<T>): Promise<T> {
   return vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title }, run);
 }
 
+let testHooksEnabled = false;
+
+/** Test hooks (an environment variable that redirects the browser to a file) work only in the extension test host. */
+export function enableTestHooks(enabled: boolean): void {
+  testHooksEnabled = enabled;
+}
+
 /**
  * Opens a URL exactly as given. `Uri.parse` re-encodes query strings (the
  * sign-in URL carries an encoded `return_to`), so the string form is passed,
  * which the extension host accepts and validates.
  */
 export async function openExternalUrl(url: string): Promise<boolean> {
-  const testLog = process.env.ALRAN_TEST_OPEN_EXTERNAL_LOG;
+  const testLog = testHooksEnabled ? process.env.ALRAN_TEST_OPEN_EXTERNAL_LOG : undefined;
   if (testLog) {
     // End-to-end tests record the URL instead of launching a browser.
     await appendFile(testLog, `${url}\n`);

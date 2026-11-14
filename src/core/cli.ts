@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 
 import { spawnCommand, type ResolvedCli } from '../acp/binary';
 
@@ -77,6 +77,7 @@ export async function runCli(
     readonly env?: NodeJS.ProcessEnv;
     readonly timeoutMs?: number;
     readonly input?: string;
+    readonly killGraceMs?: number;
   } = {},
 ): Promise<CliResult> {
   for (let attempt = 1; ; attempt += 1) {
@@ -94,6 +95,8 @@ function runCliOnce(
     readonly timeoutMs?: number;
     /** Written to stdin, which is otherwise closed. */
     readonly input?: string;
+    /** How long a stopping process gets between SIGTERM, SIGKILL and giving up on its pipes. */
+    readonly killGraceMs?: number;
   } = {},
 ): Promise<CliResult> {
   const spec = spawnCommand(context.cli, [...(context.globalArgs ?? []), ...args]);
@@ -110,10 +113,35 @@ function runCliOnce(
     let stdout = '';
     let stderr = '';
     let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGTERM');
-    }, options.timeoutMs ?? 60_000);
+    let settled = false;
+    const timers: NodeJS.Timeout[] = [];
+    const settle = (code: number | null): void => {
+      if (settled) return;
+      settled = true;
+      for (const timer of timers) clearTimeout(timer);
+      resolve({ code, stdout, stderr, ...(timedOut ? { timedOut } : {}) });
+    };
+    const grace = options.killGraceMs ?? 3_000;
+    timers.push(
+      setTimeout(() => {
+        timedOut = true;
+        killProcessTree(child, 'SIGTERM');
+        // A process that ignores SIGTERM is killed; one that is gone but whose descendants still hold
+        // its pipes never emits `close`, so after that the result is delivered without it.
+        timers.push(
+          setTimeout(() => {
+            killProcessTree(child, 'SIGKILL');
+            timers.push(
+              setTimeout(() => {
+                child.stdout?.destroy();
+                child.stderr?.destroy();
+                settle(null);
+              }, grace),
+            );
+          }, grace),
+        );
+      }, options.timeoutMs ?? 60_000),
+    );
     if (options.input !== undefined && child.stdin) {
       child.stdin.on('error', () => undefined);
       child.stdin.end(options.input);
@@ -121,14 +149,25 @@ function runCliOnce(
     child.stdout?.setEncoding('utf8').on('data', (chunk: string) => (stdout += chunk));
     child.stderr?.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
     child.once('error', (error) => {
-      clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      for (const timer of timers) clearTimeout(timer);
       reject(error);
     });
-    child.once('close', (code) => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr, ...(timedOut ? { timedOut } : {}) });
-    });
+    child.once('close', (code) => settle(code));
   });
+}
+
+/** `child.kill` ends only the direct child; on Windows that is the cmd.exe wrapper, not the CLI. */
+function killProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
+  if (process.platform === 'win32' && child.pid !== undefined) {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on(
+      'error',
+      () => child.kill(signal),
+    );
+    return;
+  }
+  child.kill(signal);
 }
 
 export async function runChecked(

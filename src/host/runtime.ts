@@ -1,4 +1,5 @@
-import { homedir } from 'node:os';
+import { mkdirSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import type * as acp from '@agentclientprotocol/sdk';
@@ -9,6 +10,7 @@ import { readLoginShellPath, resolveAlranCli, spawnCommand, type ResolvedCli } f
 import type { CliContext } from '../core/cli';
 import { AuthRequiredError, SessionManager, type ManagerListener } from '../core/manager';
 import type { AttentionEvent, SessionController } from '../core/session';
+import { USER_ONLY_SETTINGS, userSetting } from '../core/settings';
 import type { ChatPreferences, ConnectionState, SessionMeta, TabView, TranscriptItem } from '../shared/types';
 
 const OPEN_SESSIONS_KEY = 'alran.openSessions';
@@ -112,6 +114,11 @@ export class AlranRuntime implements vscode.Disposable {
     return vscode.workspace.getConfiguration('alran');
   }
 
+  /** A setting that decides what the extension runs: the user's own value, never a workspace's. */
+  userSetting<T>(section: (typeof USER_ONLY_SETTINGS)[number], fallback: T): T {
+    return userSetting(this.configuration, section, fallback);
+  }
+
   preferences(): ChatPreferences {
     const config = this.configuration;
     return {
@@ -130,8 +137,8 @@ export class AlranRuntime implements vscode.Disposable {
   resolveCli(): Promise<ResolvedCli> {
     return (async () =>
       resolveAlranCli({
-        configuredPath: this.configuration.get('executablePath', ''),
-        nodePath: this.configuration.get('nodePath', ''),
+        configuredPath: this.userSetting('executablePath', ''),
+        nodePath: this.userSetting('nodePath', ''),
         env: await this.environment(),
         loginShellPath: () => this.pathFromLoginShell(),
       }))();
@@ -149,12 +156,12 @@ export class AlranRuntime implements vscode.Disposable {
     return {
       ...process.env,
       PATH: merged,
-      ...this.configuration.get<Record<string, string>>('env', {}),
+      ...this.userSetting<Record<string, string>>('env', {}),
     };
   }
 
   globalArgs(): string[] {
-    const lane = this.configuration.get<string>('lane', '').trim();
+    const lane = this.userSetting<string>('lane', '').trim();
     return lane ? ['--lane', lane] : [];
   }
 
@@ -173,7 +180,7 @@ export class AlranRuntime implements vscode.Disposable {
   }
 
   mcpServers(): acp.McpServer[] {
-    return this.configuration.get<acp.McpServer[]>('mcpServers', []);
+    return this.userSetting<acp.McpServer[]>('mcpServers', []);
   }
 
   async cliContext(): Promise<CliContext> {
@@ -202,15 +209,31 @@ export class AlranRuntime implements vscode.Disposable {
 
   /** Alran's data directory (`ALRAN_DATA_DIR`, else `~/.alran`). */
   dataDir(): string {
-    const env = this.configuration.get<Record<string, string>>('env', {});
+    const env = this.userSetting<Record<string, string>>('env', {});
     return env.ALRAN_DATA_DIR || process.env.ALRAN_DATA_DIR || path.join(homedir(), '.alran');
+  }
+
+  /**
+   * Where the agent works when no folder is open: an empty directory of its own. The home directory
+   * would hand it `~/.ssh` and `~/.aws` as its working tree.
+   */
+  private scratchDirectory(): string {
+    const directory = path.join(this.context.globalStorageUri.fsPath, 'scratch');
+    try {
+      mkdirSync(directory, { recursive: true });
+      return directory;
+    } catch {
+      return tmpdir();
+    }
   }
 
   defaultCwd(): string {
     const activeUri = vscode.window.activeTextEditor?.document.uri;
     const activeFolder = activeUri ? vscode.workspace.getWorkspaceFolder(activeUri) : undefined;
     return (
-      activeFolder?.uri.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? homedir()
+      activeFolder?.uri.fsPath ??
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ??
+      this.scratchDirectory()
     );
   }
 

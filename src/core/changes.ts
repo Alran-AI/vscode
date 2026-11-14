@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 
 import { reverseApplyPatch } from '../shared/patch';
@@ -197,13 +197,17 @@ export function isInterestingPath(path: string): boolean {
 /** The file the permission card previews: its current and proposed text. */
 export async function proposedEdit(
   input: unknown,
+  cwd?: string,
 ): Promise<{ readonly path: string; readonly before: string; readonly after: string } | undefined> {
   if (typeof input !== 'object' || input === null) return undefined;
   const record = input as Record<string, unknown>;
-  const path = [record.file_path, record.path, record.filePath].find(
+  const named = [record.file_path, record.path, record.filePath].find(
     (value): value is string => typeof value === 'string' && value.length > 0,
   );
-  if (!path) return undefined;
+  if (!named) return undefined;
+  // A relative path is the session's, not the extension host's: reading it from the wrong place
+  // shows an empty "before" for a file that has content.
+  const path = cwd && !isAbsolute(named) ? resolve(cwd, named) : named;
   const existing = await readText(path);
   const before = typeof existing === 'string' ? existing : '';
   if (typeof record.content === 'string') return { path, before, after: record.content };

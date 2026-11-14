@@ -5,7 +5,12 @@ import type { AttentionEvent } from './core/session';
 import type { ConnectionState, SessionMeta } from './shared/types';
 import { AlranCliNotFoundError } from './acp/binary';
 import { formatMicroUsd } from './core/account';
-import { AccountService, registerAuthenticationProvider, type OttiliAuthenticationProvider } from './host/account';
+import {
+  AccountService,
+  enableTestHooks,
+  registerAuthenticationProvider,
+  type OttiliAuthenticationProvider,
+} from './host/account';
 import { AlranActions } from './host/actions';
 import { ChatHub } from './host/chatHub';
 import { registerChatParticipant, type AlranChatParticipant } from './host/chatParticipant';
@@ -54,6 +59,7 @@ export interface AlranExtensionApi {
 }
 
 export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
+  enableTestHooks(context.extensionMode === vscode.ExtensionMode.Test);
   const runtime = new AlranRuntime(context);
   const documents = new VirtualDocuments();
   const hub = new ChatHub(runtime);
@@ -148,6 +154,11 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
   };
 }
 
+/** Text from the CLI or the account service is shown as text: its links and formatting do not run. */
+function escapeMarkdown(text: string): string {
+  return text.replace(/[\\`*_{}[\]()#+\-.!|<>~]/gu, '\\$&');
+}
+
 export function deactivate(): void {
   // The runtime is disposed through the extension's subscriptions.
 }
@@ -185,12 +196,12 @@ class StatusBar implements vscode.Disposable {
   private tooltip(connection: ConnectionState): vscode.MarkdownString {
     const lines: string[] = ['**Alran Code**'];
     const { status, credits } = this.account.snapshot;
-    if (connection.state === 'connected' && connection.version) lines.push(`CLI ${connection.version}`);
+    if (connection.state === 'connected' && connection.version) lines.push(escapeMarkdown(`CLI ${connection.version}`));
     if (connection.state === 'auth-required') lines.push('Not signed in — [Sign in](command:alran.login)');
     if (connection.state === 'missing-binary') lines.push('CLI not found — [Install](command:alran.installCli)');
     if (connection.state === 'error') lines.push('The agent stopped — [Show logs](command:alran.showLogs)');
     if (status?.signedIn) {
-      lines.push(`Signed in as ${status.name ?? 'your Ottili account'}${status.companyId ? ` · ${status.companyId}` : ''}`);
+      lines.push(escapeMarkdown(`Signed in as ${status.name ?? 'your Ottili account'}${status.companyId ? ` · ${status.companyId}` : ''}`));
       if (credits?.available_microcents !== undefined) {
         lines.push(`Credit: ${formatMicroUsd(credits.available_microcents)} available — [Add credit](command:alran.openBilling)`);
       }

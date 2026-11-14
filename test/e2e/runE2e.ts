@@ -16,7 +16,6 @@ async function main(): Promise<void> {
   writeFileSync(
     path.join(fixture.workspace, '.vscode', 'settings.json'),
     JSON.stringify({
-      'alran.executablePath': process.env.ALRAN_E2E_NO_CLI ? path.join(fixture.workspace, 'missing', 'alran') : fixture.cliPath,
       'alran.notifications.when': 'never',
       'workbench.startupEditor': 'none',
       'security.workspace.trust.enabled': false,
@@ -31,11 +30,16 @@ async function main(): Promise<void> {
     }),
   );
   const userData = path.join(path.dirname(fixture.workspace), 'vscode-user');
-  if (marketing) {
-    // A larger UI, so the shots stay readable at README width.
-    mkdirSync(path.join(userData, 'User'), { recursive: true });
-    writeFileSync(path.join(userData, 'User', 'settings.json'), JSON.stringify({ 'window.zoomLevel': 1, 'telemetry.telemetryLevel': 'off' }));
-  }
+  // The CLI to run is a user setting: a workspace cannot choose which program the extension starts.
+  mkdirSync(path.join(userData, 'User'), { recursive: true });
+  writeFileSync(
+    path.join(userData, 'User', 'settings.json'),
+    JSON.stringify({
+      'alran.executablePath': process.env.ALRAN_E2E_NO_CLI ? path.join(fixture.workspace, 'missing', 'alran') : fixture.cliPath,
+      // A larger UI, so the README shots stay readable.
+      ...(marketing ? { 'window.zoomLevel': 1, 'telemetry.telemetryLevel': 'off' } : {}),
+    }),
+  );
   try {
     await runTests({
       version: process.env.ALRAN_TEST_VSCODE ?? 'stable',

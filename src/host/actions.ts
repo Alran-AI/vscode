@@ -292,7 +292,7 @@ export class AlranActions {
   }
 
   private async confirmFullAccess(): Promise<boolean> {
-    if (!this.runtime.configuration.get('confirmFullAccess', true)) return true;
+    if (!this.runtime.userSetting('confirmFullAccess', true)) return true;
     const confirm = 'Enable Full Access';
     const choice = await vscode.window.showWarningMessage(
       'Full Access lets Alran run every tool, including shell commands and file changes, without asking.',

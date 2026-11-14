@@ -394,6 +394,7 @@ export function App() {
       )}
       {meta ? <QueueList meta={meta} /> : null}
       <Composer
+        key={activeId ?? 'none'}
         meta={meta}
         preferences={preferences}
         {...(activeFile ? { activeFile } : {})}

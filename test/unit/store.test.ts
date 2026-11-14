@@ -60,6 +60,14 @@ describe('store rows', () => {
     expect(itemFromSelector('plain', 'skill')).toMatchObject({ name: 'plain', origin: '', kind: 'skill' });
   });
 
+  it('refuses a name the CLI would read as an option, or that carries whitespace or control characters', () => {
+    expect(() => storeSelector(item({ name: '--yes', origin: '' }))).toThrow(/cannot be used safely/);
+    expect(() => storeSelector(item({ name: '-x', origin: 'ottili' }))).toThrow(/cannot be used safely/);
+    expect(() => storeSelector(item({ name: 'a b' }))).toThrow(/cannot be used safely/);
+    expect(() => storeSelector(item({ name: 'a\nb' }))).toThrow(/cannot be used safely/);
+    expect(() => storeSelector(item({ origin: 'x\ty' }))).toThrow(/cannot be used safely/);
+  });
+
   it('chooses what Enter does', () => {
     expect(primaryAction(item())).toBe('install');
     expect(primaryAction(item({ installed: true, enabled: true }))).toBe('details');

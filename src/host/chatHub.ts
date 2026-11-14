@@ -7,6 +7,8 @@ import { parseSlash } from '../shared/commands';
 import type { HostMessage, QueueOperation, GoalOperation, WebviewMessage } from '../shared/protocol';
 import type { ComposerAttachment, MentionCandidate, TranscriptItem } from '../shared/types';
 import type { FailureAction } from '../shared/errors';
+import { locateFile } from '../core/paths';
+import { planTerminalText } from '../core/terminalText';
 import type { AccountService } from './account';
 import type { AlranActions } from './actions';
 import { attachmentsFromUris, fileAttachment, findFileMentions, relativeLabel } from './context';
@@ -311,7 +313,7 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
       }
       case 'previewPermissionDiff': {
         const item = session?.model.find(message.id);
-        if (item?.kind === 'permission' && !(await openPermissionPreview(actions.documents, item))) {
+        if (item?.kind === 'permission' && !(await openPermissionPreview(actions.documents, item, session?.meta.cwd))) {
           void vscode.window.showInformationMessage('No file preview is available for this request.');
         }
         break;
@@ -335,9 +337,7 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
         );
         break;
       case 'runInTerminal':
-        (vscode.window.activeTerminal ?? vscode.window.createTerminal('Alran')).show();
-        // Left unexecuted on purpose: the user presses Enter after reading it.
-        vscode.window.activeTerminal?.sendText(message.text, false);
+        await this.pasteIntoTerminal(message.text);
         break;
       case 'queue':
         await this.applyQueue(message.operation);
@@ -470,9 +470,46 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
     }
   }
 
+  /**
+   * Types a one-line command into Alran's own terminal, without Enter. Not the active terminal, which
+   * may be an SSH session to a production host. A command with a line break or control character
+   * would run as soon as it is typed, so it goes to the clipboard for the user to paste.
+   */
+  private async pasteIntoTerminal(text: string): Promise<void> {
+    const plan = planTerminalText(text);
+    if (plan.kind === 'paste') {
+      await vscode.env.clipboard.writeText(plan.text);
+      void vscode.window.showInformationMessage(
+        'This command has more than one line, so it was copied instead of typed. Paste it into a terminal once you have read it.',
+      );
+      return;
+    }
+    const terminal =
+      vscode.window.terminals.find((candidate) => candidate.name === 'Alran') ??
+      vscode.window.createTerminal('Alran');
+    terminal.show();
+    // Left unexecuted on purpose: the user presses Enter after reading it.
+    terminal.sendText(plan.text, false);
+  }
+
   private async openFile(filePath: string, line?: number): Promise<void> {
     const cwd = this.runtime.manager.active?.meta.cwd ?? this.runtime.defaultCwd();
-    const uri = vscode.Uri.file(path.isAbsolute(filePath) ? filePath : path.join(cwd, filePath));
+    const roots = [
+      cwd,
+      ...(vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath),
+      this.runtime.dataDir(),
+    ];
+    const located = await locateFile(filePath, cwd, roots);
+    if (!located.inside) {
+      // The transcript shows model output, whose link text can say anything: name the real path.
+      const choice = await vscode.window.showWarningMessage(
+        'Open a file outside this workspace?',
+        { modal: true, detail: located.path },
+        'Open',
+      );
+      if (choice !== 'Open') return;
+    }
+    const uri = vscode.Uri.file(located.path);
     const editor = await vscode.window.showTextDocument(uri, { preview: true });
     if (line !== undefined) {
       const position = new vscode.Position(Math.max(0, line - 1), 0);

@@ -50,6 +50,8 @@ export class AuthRequiredError extends Error {
 }
 
 const MAX_AUTOMATIC_RESTARTS = 3;
+/** An agent that ran this long was healthy; only then does a later crash start the count afresh. */
+const STABLE_AFTER_MS = 60_000;
 
 /** Owns the agent process and every open Session attached to it. */
 export class SessionManager {
@@ -57,6 +59,7 @@ export class SessionManager {
   private agent: AlranAgent | undefined;
   private connecting: Promise<AlranAgent> | undefined;
   private restarts = 0;
+  private connectedAt = 0;
   private disposed = false;
   private currentActiveId: string | undefined;
   private currentConnection: ConnectionState = { state: 'disconnected' };
@@ -98,7 +101,7 @@ export class SessionManager {
     this.connecting = this.startAgent()
       .then((agent) => {
         this.agent = agent;
-        this.restarts = 0;
+        this.connectedAt = Date.now();
         this.setConnection({
           state: 'connected',
           ...(agent.version ? { version: agent.version } : {}),
@@ -320,6 +323,9 @@ export class SessionManager {
   private handleExit(info: AgentExit): void {
     if (this.disposed || info.expected) return;
     this.agent = undefined;
+    // Resetting on every successful connect would let an agent that crashes right after starting
+    // respawn forever; the count only restarts after a stable run.
+    if (this.connectedAt > 0 && Date.now() - this.connectedAt >= STABLE_AFTER_MS) this.restarts = 0;
     const detail = `The Alran agent stopped unexpectedly (code ${String(info.code)}).`;
     const open = [...this.sessions.values()];
     for (const session of open) session.markDetached(detail);

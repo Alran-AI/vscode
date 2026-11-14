@@ -78,9 +78,19 @@ export function parseApprovalRequest(output: string): string[] | undefined {
   return commands;
 }
 
-/** `name@store`, the selector the CLI accepts when several stores offer one name. */
+/**
+ * `name@store`, the selector the CLI accepts when several stores offer one name.
+ *
+ * The name comes from a store's index and goes into the CLI's argument list. One that starts with `-`
+ * would be read as an option (`--yes` would answer the CLI's own approval question before the user
+ * saw it), so such names, and any with whitespace or control characters, are refused.
+ */
 export function storeSelector(item: Pick<StoreItem, 'name' | 'origin'>): string {
-  return item.origin ? `${item.name}@${item.origin}` : item.name;
+  const selector = item.origin ? `${item.name}@${item.origin}` : item.name;
+  if (selector.startsWith('-') || /[\s\u0000-\u001f\u007f]/u.test(selector)) {
+    throw new Error(`The Store lists an entry whose name cannot be used safely: ${JSON.stringify(item.name)}.`);
+  }
+  return selector;
 }
 
 export function isBuiltIn(item: Pick<StoreItem, 'origin'>): boolean {

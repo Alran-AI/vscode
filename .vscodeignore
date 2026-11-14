@@ -1,6 +1,7 @@
 **
 !dist/extension.cjs
 !dist/webview/**
+dist/webview/**/*.map
 !media/icon.png
 !media/activitybar.svg
 !media/walkthrough/**
