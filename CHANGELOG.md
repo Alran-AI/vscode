@@ -4,6 +4,13 @@
 
 The first public release. Needs the Alran CLI 0.9.0 or newer.
 
+### Safer by default
+
+- A project can no longer choose what the extension runs. `alran.executablePath`, `alran.nodePath`, `alran.env`, `alran.lane`, `alran.mcpServers` and `alran.confirmFullAccess` are read from your user settings only; a value in a folder's `.vscode/settings.json` is ignored. Set them in your own settings.
+- **Paste into terminal** types a one-line command into Alran's own terminal and never presses Enter. A command with more than one line is copied instead, to paste once you have read it.
+- A file link in the chat opens inside the workspace; one that leads outside asks first and shows the real path. Raw HTML in a reply is shown as text.
+- Without an open folder the agent works in an empty scratch folder of its own, not in your home directory.
+
 ### Plugin Store and Skill Library
 
 - **Alran: Browse Plugin Store…** and **Browse Skill Library…** open the Store of the CLI in the editor: Plugins, the Skill Library (grouped, with Alran's built-in Skills last), what is installed and the stores it reads. Type to search, **Enter** installs or updates, buttons show details, switch a Plugin on or off and remove it.
