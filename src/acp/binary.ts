@@ -179,7 +179,16 @@ export function spawnCommand(
   return { command: cli.command, args: allArgs };
 }
 
+/**
+ * One argument of a cmd.exe command line.
+ *
+ * A line break ends the command line for cmd.exe, so whatever follows it would run as a command of its
+ * own (a Store entry's name comes from a remote index). It cannot be quoted, so it is refused.
+ */
 export function quoteForCmd(value: string): string {
+  if (/[\r\n\u0000]/u.test(value)) {
+    throw new Error('A command-line argument for cmd.exe must not contain a line break or a NUL character.');
+  }
   const escaped = value.replace(/(\\*)"/gu, '$1$1\\"').replace(/(\\+)$/u, '$1$1');
   return `"${escaped.replace(/([()%!^"<>&|])/gu, '^$1')}"`;
 }

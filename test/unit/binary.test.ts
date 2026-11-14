@@ -85,4 +85,10 @@ describe('spawnCommand', () => {
   it('escapes cmd metacharacters', () => {
     expect(quoteForCmd('a&b')).toBe('"a^&b"');
   });
+
+  it('refuses an argument that a line break would turn into a second command', () => {
+    for (const value of ['plugin\ncalc.exe', 'plugin\r\ncalc.exe', 'a\rb', 'a\u0000b']) {
+      expect(() => quoteForCmd(value), JSON.stringify(value)).toThrow(/line break/);
+    }
+  });
 });
