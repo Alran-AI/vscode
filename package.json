@@ -476,6 +476,12 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "alran.reconnectSession",
+        "title": "Reconnect Session",
+        "category": "Alran",
+        "icon": "$(plug)"
+      },
+      {
         "command": "alran.openConfig",
         "title": "Open config.yaml",
         "category": "Alran",
@@ -685,6 +691,10 @@
         },
         {
           "command": "alran.showSession",
+          "when": "false"
+        },
+        {
+          "command": "alran.reconnectSession",
           "when": "false"
         }
       ],
