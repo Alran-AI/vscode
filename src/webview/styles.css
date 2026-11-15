@@ -1258,10 +1258,13 @@ button.account-line:hover {
   color: var(--vscode-badge-foreground);
   background: var(--vscode-badge-background);
 }
-/* In a narrow side bar the labels give way to the icons; the active page keeps its name. */
-@media (max-width: 420px) {
-  .nav-button:not(.active) .nav-label {
+/* In a narrow side bar the labels give way to the icons (the page names itself in its header). */
+@media (max-width: 520px) {
+  .nav-label {
     display: none;
+  }
+  .nav-button {
+    padding: 5px 10px 6px;
   }
 }
 .page {

@@ -41,7 +41,7 @@ While Alran works, **Enter** steers the running task, **Ctrl+Enter** queues the 
 
 ### You stay in control
 
-Every edit opens as a real diff next to your code. The **Changes** view lists everything a session changed, with per-file or full revert. Plan Mode (`Shift+Tab`) lets Alran plan before it touches anything.
+Alran has one surface: tabs along the top of the chat switch between **Chat, Sessions, Changes, Agents, Capabilities** and **Account**, in the side bar or in an editor tab. Every edit opens as a real diff next to your code. The **Changes** tab lists everything a session changed, with per-file or full revert. Plan Mode (`Shift+Tab`) lets Alran plan before it touches anything.
 
 ![The diff of an edit beside the conversation that made it](media/screenshots/diff.png)
 

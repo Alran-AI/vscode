@@ -246,7 +246,10 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       // The old tree-view focus commands now open the page in the chat.
       for (const page of ['sessions', 'changes', 'agents', 'capabilities', 'account']) {
         await vscode.commands.executeCommand(`alran.${page}.focus`);
+        await sleep(900);
+        screenshot(`page-${page}`);
       }
+      await vscode.commands.executeCommand('alran.openChat');
       assert.equal((await panels.build('agents')).rows.length >= 0, true);
     },
   ],

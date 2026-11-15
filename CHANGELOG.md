@@ -4,6 +4,14 @@
 
 The first public release. Needs the Alran CLI 0.9.0 or newer.
 
+### One surface, not six panels
+
+- The side bar is one designed chat, not a chat above five collapsible editor panels. **Chat, Sessions, Changes, Agents, Capabilities** and **Account** are tabs along the top of it (a badge counts changed files and running sub-agents), and the same tabs appear when the chat is open as an editor tab, so it can sit wherever you want it.
+- The agent and the first session start with the editor. The model picker is there when you open the chat and the first message goes out at once. If the agent cannot start, the chat says why and offers a retry, instead of staying silent.
+- The speed of the model shows next to the context meter (`⚡ ~120 tok/s`, estimated from the streamed text; time spent in tools is not counted).
+- A session you open in the terminal says so, and comes back by itself when you close it there. **Reconnect** no longer restarts the whole agent.
+- The Account tab names the installed extension version.
+
 ### Safer by default
 
 - A project can no longer choose what the extension runs. `alran.executablePath`, `alran.nodePath`, `alran.env`, `alran.lane`, `alran.mcpServers` and `alran.confirmFullAccess` are read from your user settings only; a value in a folder's `.vscode/settings.json` is ignored. Set them in your own settings.
