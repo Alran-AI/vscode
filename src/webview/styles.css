@@ -1784,3 +1784,25 @@ button.account-line:hover {
   margin-left: 6px;
   flex: none;
 }
+
+/* ---- Long messages, copy feedback, failed tools ---- */
+.user-text.clamped {
+  max-height: 12em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+
+.icon-button.copied {
+  color: var(--success);
+}
+
+.tool-failure {
+  margin: 0 0 2px 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--error);
+  opacity: 0.85;
+}

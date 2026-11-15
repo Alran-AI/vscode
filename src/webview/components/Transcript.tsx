@@ -34,15 +34,56 @@ function userText(item: UserItem): string {
   return item.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
 }
 
+/** A copy button that shows a check for a moment, so the click is answered where it happened. */
+function CopyButton({ text, label }: { readonly text: string; readonly label: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  return (
+    <button
+      class={`icon-button${copied ? ' copied' : ''}`}
+      title={copied ? 'Copied' : label}
+      aria-label={copied ? 'Copied' : label}
+      onClick={() => {
+        post({ type: 'copy', text });
+        setCopied(true);
+      }}
+    >
+      <Icon name={copied ? 'check' : 'copy'} />
+    </button>
+  );
+}
+
+/** A pasted log or stack trace is shown folded, with a way to read it all. */
+function isLong(text: string): boolean {
+  return text.length > 700 || text.split('\n').length > 10;
+}
+
+function UserText({ text }: { readonly text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const long = isLong(text);
+  return (
+    <>
+      <div class={`user-text${long && !expanded ? ' clamped' : ''}`}>{text}</div>
+      {long ? (
+        <button class="link-button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 function UserMessage({ item }: { readonly item: UserItem }) {
   const text = userText(item);
   return (
     <div class={`message user${item.steered ? ' steered' : ''}`}>
       {text ? (
         <div class="message-actions">
-          <button class="icon-button" title="Copy" aria-label="Copy this message" onClick={() => post({ type: 'copy', text })}>
-            <Icon name="copy" />
-          </button>
+          <CopyButton text={text} label="Copy this message" />
           <button
             class="icon-button"
             title="Use as a new message"
@@ -55,7 +96,7 @@ function UserMessage({ item }: { readonly item: UserItem }) {
       ) : null}
       {item.steered ? <div class="message-tag">Steered into the running turn</div> : null}
       {item.content.map((part, index) => {
-        if (part.type === 'text') return <div key={index} class="user-text">{part.text}</div>;
+        if (part.type === 'text') return <UserText key={index} text={part.text} />;
         if (part.type === 'image') {
           return <img key={index} class="user-image" alt="" src={`data:${part.mimeType};base64,${part.data}`} />;
         }
@@ -83,9 +124,7 @@ function AssistantMessage({
       {plain ? <pre class="tool-pre plain-output">{text}</pre> : <Markdown text={text} />}
       {streaming ? <span class="cursor" /> : (
         <div class="message-actions">
-          <button class="icon-button" title="Copy as Markdown" aria-label="Copy as Markdown" onClick={() => post({ type: 'copy', text })}>
-            <Icon name="copy" />
-          </button>
+          <CopyButton text={text} label="Copy as Markdown" />
         </div>
       )}
     </div>
@@ -131,10 +170,17 @@ function inputPreview(item: ToolItem): string | undefined {
   return JSON.stringify(item.input, null, 2);
 }
 
+function firstLine(text: string | undefined): string | undefined {
+  const line = text?.split('\n').find((candidate) => candidate.trim() !== '');
+  return line ? line.trim().slice(0, 200) : undefined;
+}
+
 function ToolRow({ item, children }: { readonly item: ToolItem; readonly children: readonly ToolItem[] }) {
   const [open, setOpen] = useState(false);
   const preview = inputPreview(item);
   const stat = useMemo(() => patchStat(item.patch), [item.patch]);
+  // A failed call says why in one line, without opening it.
+  const failure = item.status === 'failed' ? firstLine(item.output) : undefined;
   const failedChildren = children.filter((child) => child.status === 'failed').length;
   const hasDetail =
     preview !== undefined || !!item.output || !!item.patch || item.blocks.length > 0 || children.length > 0;
@@ -167,6 +213,7 @@ function ToolRow({ item, children }: { readonly item: ToolItem; readonly childre
           </button>
         ) : null}
       </div>
+      {!open && failure ? <div class="tool-failure" title={failure}>{failure}</div> : null}
       {open ? (
         <div class="tool-body">
           {preview !== undefined ? <pre class="tool-pre">{preview}</pre> : null}

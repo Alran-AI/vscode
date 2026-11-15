@@ -4,6 +4,18 @@ import { useMemo } from 'preact/hooks';
 import { FILE_REFERENCE, renderMarkdown } from '../markdown';
 import { post } from '../store';
 
+/** The copy button shows a check for a moment, where the eye already is, instead of a message in the status bar. */
+function confirmCopy(button: HTMLElement): void {
+  const icon = button.querySelector('.codicon');
+  if (!icon?.classList.contains('codicon-copy')) return;
+  icon.classList.replace('codicon-copy', 'codicon-check');
+  button.title = 'Copied';
+  window.setTimeout(() => {
+    icon.classList.replace('codicon-check', 'codicon-copy');
+    button.title = 'Copy';
+  }, 1500);
+}
+
 function onContentClick(event: MouseEvent): void {
   const target = event.target as HTMLElement;
   const button = target.closest<HTMLElement>('[data-code-action]');
@@ -12,7 +24,10 @@ function onContentClick(event: MouseEvent): void {
     const code = block?.querySelector('code')?.textContent ?? '';
     const language = block?.dataset.language || undefined;
     const action = button.dataset.codeAction;
-    if (action === 'copy') post({ type: 'copy', text: code });
+    if (action === 'copy') {
+      post({ type: 'copy', text: code });
+      confirmCopy(button);
+    }
     else if (action === 'insert') post({ type: 'insertAtCursor', text: code });
     else if (action === 'new-file') {
       post({ type: 'applyToNewFile', text: code, ...(language ? { language } : {}) });
