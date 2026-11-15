@@ -118,12 +118,10 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     vscode.window.registerWebviewViewProvider(ChatHub.viewId, hub, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    // The pages next to the chat live in the chat webview; these open them. Changes, Sessions,
-    // Sub-Agents and Capabilities are in the command palette; the account is reached by
-    // "Show Credit and Spending", and links, the status bar and slash commands call all of them.
-    ...(['sessions', 'changes', 'agents', 'capabilities', 'account'] as const).map((page) =>
-      vscode.commands.registerCommand(`alran.${page}.focus`, () => hub.showPage(page)),
-    ),
+    // The pages next to the chat live in the chat webview. Changes, Sessions, Sub-Agents and
+    // Capabilities open through commands in the palette (see commands.ts). The account is not listed
+    // there on purpose, "Show Credit and Spending" is its entry; links and the status bar call this.
+    vscode.commands.registerCommand('alran.account.focus', () => hub.showPage('account')),
     vscode.languages.registerCodeActionsProvider({ scheme: 'file' }, new AlranCodeActions(), {
       providedCodeActionKinds: AlranCodeActions.kinds,
     }),

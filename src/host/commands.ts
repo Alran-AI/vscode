@@ -88,6 +88,11 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
       hub.setDraft('/', false, true);
     },
     'alran.openInEditor': () => hub.openInEditor(),
+    // The tabs of the chat, by name: the command palette, links and the status bar open them.
+    'alran.changes.focus': () => hub.showPage('changes'),
+    'alran.sessions.focus': () => hub.showPage('sessions'),
+    'alran.agents.focus': () => hub.showPage('agents'),
+    'alran.capabilities.focus': () => hub.showPage('capabilities'),
     'alran.newSession': () => actions.newSession(),
     'alran.resumeSession': () => actions.pickSession(),
     'alran.openSession': (node: SessionNode) =>

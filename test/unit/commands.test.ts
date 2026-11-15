@@ -75,7 +75,7 @@ describe('manifest', () => {
     contributes: { commands: Array<{ command: string }> };
   };
   const contributed = manifest.contributes.commands.map((entry) => entry.command).sort();
-  const registered = [...read('src/host/commands.ts').matchAll(/'(alran\.[a-zA-Z]+)':/gu)]
+  const registered = [...read('src/host/commands.ts').matchAll(/'(alran\.[a-zA-Z.]+)':/gu)]
     .map((match) => match[1] ?? '')
     .sort();
 
