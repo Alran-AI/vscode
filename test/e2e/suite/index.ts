@@ -337,7 +337,7 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       const rows = api.trees.account.getChildren();
       assert.deepEqual(
         rows.map((row) => row.id),
-        ['account.user', 'account.company', 'account.project', 'account.model', 'account.credits', 'account.month', 'account.billing', 'account.cli'],
+        ['account.user', 'account.company', 'account.project', 'account.model', 'account.credits', 'account.month', 'account.billing', 'account.cli', 'account.extension'],
       );
       await vscode.commands.executeCommand('alran.account.focus');
       await vscode.commands.executeCommand('list.expandAll').then(undefined, () => undefined);
