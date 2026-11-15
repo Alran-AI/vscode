@@ -23,7 +23,8 @@ describe('resolveAlranCli', () => {
     return file;
   };
 
-  const options = (extra: object = {}) => ({ env: { PATH: '' }, home: root, platform: 'linux' as const, ...extra });
+  // `systemDirs: []` keeps the test independent of an `alran` installed in /usr/local/bin on this machine.
+  const options = (extra: object = {}) => ({ env: { PATH: '' }, home: root, platform: 'linux' as const, systemDirs: [], ...extra });
 
   it('prefers the configured path and runs scripts with node', async () => {
     const script = executable('x/cli.js');

@@ -21,6 +21,8 @@ export interface ResolveCliOptions {
   readonly platform?: NodeJS.Platform;
   readonly home?: string;
   readonly loginShellPath?: () => Promise<string | undefined>;
+  /** System-wide install directories on macOS and Linux (default: /usr/local/bin, /opt/homebrew/bin). */
+  readonly systemDirs?: readonly string[];
 }
 
 export class AlranCliNotFoundError extends Error {
@@ -72,7 +74,7 @@ export async function resolveAlranCli(options: ResolveCliOptions): Promise<Resol
     join(home, '.volta', 'bin', executable),
     ...(platform === 'win32'
       ? [join(options.env.APPDATA ?? join(home, 'AppData', 'Roaming'), 'npm', 'alran.cmd')]
-      : ['/usr/local/bin/alran', '/opt/homebrew/bin/alran']),
+      : (options.systemDirs ?? ['/usr/local/bin', '/opt/homebrew/bin']).map((directory) => join(directory, 'alran'))),
   ];
   for (const candidate of wellKnown) {
     searched.push(candidate);
