@@ -5,6 +5,10 @@ const mode = process.argv[2];
 if (mode === 'ignore-sigterm') {
   process.on('SIGTERM', () => undefined);
   setInterval(() => undefined, 1_000);
+} else if (mode === 'silent') {
+  // Starts, reads its input, and never answers: the spawn succeeds and the process stays alive.
+  process.stdin.resume();
+  setInterval(() => undefined, 1_000);
 } else if (mode === 'leave-pipes') {
   const child = spawn(process.execPath, ['-e', 'setTimeout(() => undefined, 20000)'], {
     detached: true,

@@ -20,7 +20,12 @@ export interface AgentLaunchOptions {
   /** Arguments after the `acp` subcommand (system prompt overrides). */
   readonly acpArgs?: readonly string[];
   readonly clientVersion?: string;
+  /** How long the agent may take to answer `initialize` before it is stopped; default one minute. */
+  readonly initializeTimeoutMs?: number;
 }
+
+/** A cold start of the CLI is seconds; a minute without an answer is a hung process, not a slow one. */
+const DEFAULT_INITIALIZE_TIMEOUT_MS = 60_000;
 
 export interface AgentHandlers {
   onUpdate(params: acp.SessionNotification): void;
@@ -193,7 +198,33 @@ export class AlranAgent {
         },
       },
     });
-    this.initializeResult = await Promise.race([initialize, spawnFailure, exited]);
+    // Without a deadline a process that starts and then says nothing leaves the chat on
+    // "connecting" for ever: the spawn did not fail and the process did not exit.
+    const timeoutMs = this.options.initializeTimeoutMs ?? DEFAULT_INITIALIZE_TIMEOUT_MS;
+    let timer: NodeJS.Timeout | undefined;
+    let timedOut = false;
+    const noAnswer = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
+        reject(
+          new Error(
+            `The Alran agent did not answer within ${Math.round(timeoutMs / 1000)} seconds of starting.${
+              this.stderrTail.trim() ? `\n${this.stderrTail.trim()}` : ''
+            }`,
+          ),
+        );
+      }, timeoutMs);
+    });
+    noAnswer.catch(() => undefined);
+    try {
+      this.initializeResult = await Promise.race([initialize, spawnFailure, exited, noAnswer]);
+    } catch (error) {
+      // A process that was given up on must not be left running behind the error.
+      if (timedOut) await this.stop();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
     return this.initializeResult;
   }
 
