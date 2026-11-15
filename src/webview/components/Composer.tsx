@@ -11,7 +11,7 @@ import type {
   SessionMeta,
 } from '../../shared/types';
 import { rankByQuery, splitMatch } from '../../shared/ui';
-import { composerEvents, draftKey, post, readDraft, saveDraft } from '../store';
+import { composerEvents, draftKey, flushComposerQueue, post, readDraft, saveDraft } from '../store';
 import { Icon } from './Transcript';
 
 interface MenuEntry {
@@ -212,6 +212,8 @@ export function Composer({
         setMenuIndex(0);
       }
     };
+    // A draft or a file the host sent while a page was open waits for this moment.
+    flushComposerQueue();
   }, []);
 
   useEffect(() => {
@@ -449,7 +451,7 @@ export function Composer({
         </div>
       ) : noCommand ? (
         <div class="menu menu-empty" role="status">
-          <Icon name="search" /> No command matches <code>/{slashQuery}</code>. Enter sends it as text.
+          <Icon name="search" /> No command matches <code>/{slashQuery}</code>. Enter sends it to Alran as typed.
         </div>
       ) : null}
       <div class={`composer-box${dragging ? ' drag-over' : ''}`}>

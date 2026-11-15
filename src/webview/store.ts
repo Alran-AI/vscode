@@ -127,6 +127,27 @@ export interface ComposerEvents {
 
 export const composerEvents: ComposerEvents = {};
 
+/**
+ * What the host asked of the composer while another page was open (a draft from "Explain this code",
+ * a file added from the Explorer). The composer does not exist on a page, so the chat comes forward
+ * first and these run when the composer has mounted.
+ */
+const pendingComposer: Array<() => void> = [];
+
+function whenComposerReady(action: () => void): void {
+  if (state.page === 'chat') {
+    action();
+    return;
+  }
+  pendingComposer.push(action);
+  openPage('chat');
+}
+
+/** The composer calls this once it has registered its handlers. */
+export function flushComposerQueue(): void {
+  for (const action of pendingComposer.splice(0)) action();
+}
+
 function upsertItems(sessionId: string, incoming: readonly TranscriptItem[]): void {
   if (sessionId !== state.activeId && sessionId !== state.meta?.id) return;
   const items = [...state.items];
@@ -171,13 +192,14 @@ export function handleHostMessage(message: HostMessage): void {
       composerEvents.mentions?.(message.requestId, message.candidates);
       break;
     case 'addAttachments':
-      composerEvents.addAttachments?.(message.attachments);
+      whenComposerReady(() => composerEvents.addAttachments?.(message.attachments));
       break;
     case 'setDraft':
-      composerEvents.setDraft?.(message.text, message.send, message.menu);
+      whenComposerReady(() => composerEvents.setDraft?.(message.text, message.send, message.menu));
       break;
     case 'focusComposer':
-      composerEvents.focus?.();
+      // Only when the chat is showing: focusing must not pull someone off the page they are reading.
+      if (state.page === 'chat') composerEvents.focus?.();
       break;
     case 'account':
       update({ account: message.account });
