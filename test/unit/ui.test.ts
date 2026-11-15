@@ -8,6 +8,7 @@ import {
   patchStat,
   rankByQuery,
   splitMatch,
+  textStat,
 } from '../../src/shared/ui';
 
 function tool(id: string, toolKind: string, extra: Partial<ToolItem> = {}): ToolItem {
@@ -139,5 +140,20 @@ describe('describeExploration', () => {
     );
     expect(describeExploration([tool('a', 'search'), tool('b', 'search')])).toBe('Searched 2 times');
     expect(describeExploration([tool('a', 'read')])).toBe('Read 1 file');
+  });
+});
+
+describe('textStat', () => {
+  it('counts the lines that differ', () => {
+    expect(textStat('a\nb\nc\n', 'a\nB\nc\nd\n')).toEqual({ added: 2, removed: 1 });
+  });
+
+  it('counts a whole new file and a whole removed file', () => {
+    expect(textStat('', 'one\ntwo')).toEqual({ added: 2, removed: 0 });
+    expect(textStat('one\ntwo', '')).toEqual({ added: 0, removed: 2 });
+  });
+
+  it('is undefined for the same text', () => {
+    expect(textStat('same\n', 'same\n')).toBeUndefined();
   });
 });

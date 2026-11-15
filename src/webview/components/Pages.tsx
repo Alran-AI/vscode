@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'preact/hooks';
 
 import type { PanelAction, PanelPage, PanelRow, PanelView } from '../../shared/panels';
 import { post } from '../store';
+import { DiffStatBadge } from './Diff';
 import { Icon } from './Transcript';
 
 /** What the Chat tab shows about the conversations: nothing, working, or waiting for the person. */
@@ -166,6 +167,7 @@ function Row({
           <Icon name={name} spin={spin} />
           <span class="row-label">{row.label}</span>
           {row.description ? <span class="row-description">{row.description}</span> : null}
+          {row.stat ? <DiffStatBadge stat={row.stat} className="row-stat" /> : null}
           {row.group && hasChildren ? <span class="row-count">{row.children?.length}</span> : null}
         </button>
         <span class="row-actions">
@@ -187,8 +189,12 @@ const PAGE_ICONS: Readonly<Record<PanelPage, string>> = {
   account: 'account',
 };
 
-/** A filter box is worth its space once a page has more than this many rows. */
+/** A filter box is worth its space once a list page has more than this many rows. */
 const FILTER_THRESHOLD = 8;
+
+/** Pages that are a list that grows. The account and the sub-agents are a few fixed rows: no count, no filter. */
+const LISTS: ReadonlySet<PanelPage> = new Set<PanelPage>(['sessions', 'changes', 'capabilities']);
+const COUNTED: ReadonlySet<PanelPage> = new Set<PanelPage>(['sessions', 'changes']);
 
 /** The items on a page: a group heading is not one, only what is inside it. */
 function countRows(rows: readonly PanelRow[]): number {
@@ -263,12 +269,12 @@ export function PagePanel({ page, view }: { readonly page: PanelPage; readonly v
   const needle = query.trim().toLowerCase();
   const total = useMemo(() => (view ? countRows(view.rows) : 0), [view]);
   const rows = useMemo(() => (view && needle ? filterRows(view.rows, needle) : (view?.rows ?? [])), [view, needle]);
-  const filterable = total > FILTER_THRESHOLD || needle !== '';
+  const filterable = LISTS.has(page) && (total > FILTER_THRESHOLD || needle !== '');
   return (
     <section class="page" aria-label={title}>
       <div class="page-header">
         <h2>{view?.title ?? title}</h2>
-        {view && total > 0 ? <span class="page-count">{total}</span> : null}
+        {view && total > 0 && COUNTED.has(page) ? <span class="page-count">{total}</span> : null}
         <span class="spacer" />
         {view ? (
           <ActionButtons actions={view.toolbar} onRun={(action) => post({ type: 'panelToolbar', actionId: action.id })} />

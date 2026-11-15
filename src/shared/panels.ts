@@ -33,6 +33,8 @@ export interface PanelRow {
   readonly group?: boolean;
   /** Informational line, not an item. */
   readonly note?: boolean;
+  /** Lines added and removed, for a changed file. */
+  readonly stat?: { readonly added: number; readonly removed: number };
 }
 
 export interface PanelView {

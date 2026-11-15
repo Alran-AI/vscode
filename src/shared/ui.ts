@@ -4,7 +4,7 @@
  * calls. No `vscode` and no Node imports (see `types.ts`).
  */
 
-import { patchToDiffLines } from './patch';
+import { diffText, patchToDiffLines } from './patch';
 import type { ToolItem, TranscriptItem } from './types';
 
 /**
@@ -58,6 +58,28 @@ export function patchStat(patch: string | undefined): DiffStat | undefined {
   let added = 0;
   let removed = 0;
   for (const line of patchToDiffLines(patch)) {
+    if (line.type === 'add') added += 1;
+    else if (line.type === 'remove') removed += 1;
+  }
+  return added + removed > 0 ? { added, removed } : undefined;
+}
+
+/** The lines of a text; an empty text has none, and the line break at the end of a file is not a line. */
+function lineCount(text: string): number {
+  return text === '' ? 0 : text.replace(/\n$/u, '').split('\n').length;
+}
+
+/** Added and removed lines between two texts; `undefined` when no line differs. */
+export function textStat(before: string, after: string): DiffStat | undefined {
+  if (before === '' || after === '') {
+    const lines = lineCount(before === '' ? after : before);
+    if (lines === 0) return undefined;
+    return before === '' ? { added: lines, removed: 0 } : { added: 0, removed: lines };
+  }
+  const trim = (text: string) => text.replace(/\n$/u, '');
+  let added = 0;
+  let removed = 0;
+  for (const line of diffText(trim(before), trim(after))) {
     if (line.type === 'add') added += 1;
     else if (line.type === 'remove') removed += 1;
   }

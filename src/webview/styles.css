@@ -1778,3 +1778,9 @@ button.account-line:hover {
     border-color: CanvasText;
   }
 }
+
+/* ---- Row details ---- */
+.row-stat {
+  margin-left: 6px;
+  flex: none;
+}

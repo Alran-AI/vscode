@@ -221,7 +221,10 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       const sessionsView = await panels.build('sessions');
       assert.ok(sessionsView.rows.length > 0, 'the open session is listed');
       assert.ok(sessionsView.toolbar.some((action) => action.label === 'New session'));
-      const openRow = sessionsView.rows.find((row) => row.actions.some((action) => action.label.startsWith('Fork')));
+      // Open sessions sit under an "Open now" heading once earlier sessions exist as well.
+      const flatten = (rows: readonly (typeof sessionsView.rows)[number][]): (typeof sessionsView.rows)[number][] =>
+        rows.flatMap((row) => [row, ...flatten(row.children ?? [])]);
+      const openRow = flatten(sessionsView.rows).find((row) => row.actions.some((action) => action.label.startsWith('Fork')));
       assert.ok(openRow, 'a session row offers Fork');
 
       const capabilitiesView = await panels.build('capabilities');

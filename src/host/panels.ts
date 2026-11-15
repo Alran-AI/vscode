@@ -1,6 +1,10 @@
+import { readFile, stat } from 'node:fs/promises';
+
 import * as vscode from 'vscode';
 
+import type { FileChange } from '../core/changes';
 import type { PanelAction, PanelPage, PanelRow, PanelView } from '../shared/panels';
+import { textStat } from '../shared/ui';
 import type { AccountService } from './account';
 import type { AlranRuntime } from './runtime';
 import type { AccountTree, AgentsTree, CapabilitiesTree, ChangesTree, SessionsTree } from './trees';
@@ -25,6 +29,28 @@ interface Source {
 }
 
 const MAX_DEPTH = 3;
+
+/** A file bigger than this is not read to count lines. */
+const MAX_STAT_BYTES = 512 * 1024;
+
+/** Lines added and removed in a file a session changed, from what it was before to what it is now. */
+async function changeStat(change: FileChange): Promise<PanelRow['stat']> {
+  if (change.before === undefined) return undefined;
+  let after = '';
+  try {
+    if ((await stat(change.path)).size > MAX_STAT_BYTES) return undefined;
+    after = await readFile(change.path, 'utf8');
+  } catch {
+    // The file is gone: everything that was in it was removed.
+  }
+  const before = change.before ?? '';
+  if (before.length > MAX_STAT_BYTES || before.includes('\0') || after.includes('\0')) return undefined;
+  return textStat(before, after);
+}
+
+function groupRow(id: string, label: string, icon: string, children: PanelRow[]): PanelRow {
+  return { id, label, icon, clickable: false, actions: [], group: true, children };
+}
 
 /** Inline buttons per `contextValue`: what the editor's tree views offered as inline commands. */
 const ROW_ACTIONS: Readonly<Record<string, readonly (readonly [string, string, string])[]>> = {
@@ -240,12 +266,21 @@ export class PanelHost implements vscode.Disposable {
   ): Promise<PanelRow[]> {
     const nodes = (await tree.getChildren(parent)) ?? [];
     const rows: PanelRow[] = [];
+    const open: boolean[] = [];
     let index = 0;
     for (const node of nodes) {
       const item = await tree.getTreeItem(node);
       const id = `${prefix}${String(index)}`;
       index += 1;
+      open.push(item.contextValue === 'session.open');
       rows.push(await this.toRow(page, tree, node, item, id, depth));
+    }
+    // Sessions that are open come first, under their own heading, once there are earlier ones as well.
+    if (page === 'sessions' && depth === 0 && open.some(Boolean) && open.some((isOpen) => !isOpen)) {
+      return [
+        groupRow('sessions:open', 'Open now', 'comment-discussion', rows.filter((_, position) => open[position])),
+        groupRow('sessions:earlier', 'Earlier', 'history', rows.filter((_, position) => !open[position])),
+      ];
     }
     return rows;
   }
@@ -285,6 +320,7 @@ export class PanelHost implements vscode.Disposable {
     const description = typeof item.description === 'string' ? item.description : undefined;
     const tooltip = typeof item.tooltip === 'string' ? item.tooltip : item.tooltip?.value;
     const note = !clickable && actions.length === 0 && icon === 'info' && !collapsible;
+    const lines = page === 'changes' && isChangeNode(node) ? await changeStat(node.change) : undefined;
     return {
       id,
       label,
@@ -296,6 +332,7 @@ export class PanelHost implements vscode.Disposable {
       ...(children ? { children } : {}),
       ...(group ? { group: true } : {}),
       ...(note ? { note: true } : {}),
+      ...(lines ? { stat: lines } : {}),
     };
   }
 
@@ -333,6 +370,10 @@ function argsFor(command: string, node: unknown): readonly unknown[] {
     default:
       return [];
   }
+}
+
+function isChangeNode(node: unknown): node is { readonly kind: 'change'; readonly change: FileChange } {
+  return typeof node === 'object' && node !== null && (node as { kind?: unknown }).kind === 'change';
 }
 
 function labelOf(item: vscode.TreeItem): string {

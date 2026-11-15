@@ -23,7 +23,7 @@ import {
   type TranscriptEntryModel,
 } from '../../shared/ui';
 import { composerEvents, post } from '../store';
-import { PatchView, TextDiffView } from './Diff';
+import { DiffStatBadge, PatchView, TextDiffView } from './Diff';
 import { Markdown } from './Markdown';
 
 export function Icon({ name, spin }: { readonly name: string; readonly spin?: boolean }) {
@@ -148,11 +148,7 @@ function ToolRow({ item, children }: { readonly item: ToolItem; readonly childre
         >
           <Icon name={TOOL_ICONS[item.toolKind] ?? 'tools'} />
           <span class="tool-title">{describeTool(item)}</span>
-          {stat ? (
-            <span class="tool-stat" title={`${String(stat.added)} lines added, ${String(stat.removed)} removed`}>
-              <span class="stat-add">+{stat.added}</span> <span class="stat-remove">−{stat.removed}</span>
-            </span>
-          ) : null}
+          {stat ? <DiffStatBadge stat={stat} /> : null}
           {children.length > 0 ? (
             <span class="tool-count">
               {children.length} calls{failedChildren ? `, ${String(failedChildren)} failed` : ''}
