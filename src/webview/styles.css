@@ -1818,3 +1818,33 @@ button.account-line:hover {
   background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground);
 }
+
+/* ---- Questions: the whole row is the target, and the choice is visible ---- */
+.question-option {
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.question-option:hover {
+  background: var(--hover);
+}
+
+.question-option:has(input:checked) {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.question-option input {
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--vscode-button-background);
+}
+
+.question-field legend {
+  font-weight: 600;
+}
+
+.card.question:not(.resolved) {
+  border-left-width: 3px;
+}
