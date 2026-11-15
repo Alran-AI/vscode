@@ -237,10 +237,37 @@ export class AlranRuntime implements vscode.Disposable {
     );
   }
 
-  /** The active Session, creating or restoring one when nothing is open. */
-  async ensureSession(): Promise<SessionController> {
+  private ensuring: Promise<SessionController> | undefined;
+
+  /**
+   * The active Session, creating or restoring one when nothing is open. Concurrent callers (the
+   * activation, a sidebar and an editor chat finishing their handshake, a first prompt) share one
+   * attempt, so they cannot open one Session each.
+   */
+  ensureSession(): Promise<SessionController> {
+    this.ensuring ??= this.doEnsureSession().finally(() => {
+      this.ensuring = undefined;
+    });
+    return this.ensuring;
+  }
+
+  private async doEnsureSession(): Promise<SessionController> {
     await this.restoreTabs();
     return this.manager.active ?? (await this.manager.newSession(this.defaultCwd()));
+  }
+
+  /**
+   * Opens the first Session without waiting for a click, and says why when that is not possible:
+   * the chat shows the reason with a way forward instead of staying empty.
+   */
+  async startFirstSession(): Promise<void> {
+    try {
+      await this.ensureSession();
+    } catch (error) {
+      if (error instanceof AuthRequiredError) return; // the sign-in card is already showing
+      this.output.warn(`startup: ${String(error)}`);
+      this.manager.reportStartupFailure(error);
+    }
   }
 
   /** Reopens the tabs this window had when it was last closed. */

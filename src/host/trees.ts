@@ -372,6 +372,18 @@ export class AccountTree extends RefreshableTree<AccountNode> {
 
   getChildren(element?: AccountNode): AccountNode[] {
     if (element) return [...(element.children ?? [])];
+    // Which version is installed is the first question when something does not work.
+    const about: AccountNode = {
+      kind: 'row',
+      id: 'account.extension',
+      label: 'Alran Code extension',
+      description: this.runtime.extensionVersion,
+      icon: 'versions',
+    };
+    return [...this.accountRows(), about];
+  }
+
+  private accountRows(): AccountNode[] {
     const snapshot = this.account.snapshot;
     const rows: AccountNode[] = [];
     const run = (command: string, title: string): vscode.Command => ({ command, title });

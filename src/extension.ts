@@ -17,6 +17,7 @@ import { registerChatParticipant, type AlranChatParticipant } from './host/chatP
 import { registerCommands } from './host/commands';
 import { AlranCodeActions } from './host/context';
 import { VirtualDocuments } from './host/diff';
+import { PanelHost } from './host/panels';
 import { AlranRuntime } from './host/runtime';
 import { SlashRouter } from './host/slash';
 import { StoreBrowser } from './host/store';
@@ -43,6 +44,8 @@ export interface AlranExtensionApi {
   readonly hub: ChatHub;
   readonly actions: AlranActions;
   readonly account: AccountService;
+  /** The pages next to the chat (sessions, changes, agents, capabilities, account). */
+  readonly panels: PanelHost;
   /** The Plugin Store and Skill Library. */
   readonly store: StoreBrowser;
   /** The Ottili account in the editor's Accounts menu. */
@@ -75,18 +78,22 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
   const capabilities = new CapabilitiesTree(runtime);
   const store = new StoreBrowser(runtime, actions, documents);
   const accountTree = new AccountTree(runtime, account);
+  const panels = new PanelHost(runtime, account, {
+    sessions,
+    changes,
+    agents,
+    capabilities,
+    account: accountTree,
+  });
   account.onCredentialsChanged = () => actions.afterAccountChange();
   const chat = registerChatParticipant(runtime, context.extensionUri);
   const auth = registerAuthenticationProvider(account);
   hub.actions = actions;
   hub.account = account;
+  hub.pages = panels;
   hub.router = new SlashRouter(actions, {
-    focusCapabilities: async () => {
-      await vscode.commands.executeCommand('alran.capabilities.focus');
-    },
-    focusAgents: async () => {
-      await vscode.commands.executeCommand('alran.agents.focus');
-    },
+    focusCapabilities: () => hub.showPage('capabilities'),
+    focusAgents: () => hub.showPage('agents'),
   }, store);
   hub.pluginMentions = () => capabilities.pluginMentions();
 
@@ -102,19 +109,20 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     capabilities,
     store,
     accountTree,
+    panels,
     auth.disposable,
     chat.disposable,
-    vscode.window.registerTreeDataProvider('alran.account', accountTree),
     vscode.window.registerTerminalProfileProvider('alran.terminalProfile', {
       provideTerminalProfile: async () => new vscode.TerminalProfile(await runtime.terminalOptions([])),
     }),
     vscode.window.registerWebviewViewProvider(ChatHub.viewId, hub, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.window.registerTreeDataProvider('alran.sessions', sessions),
-    vscode.window.registerTreeDataProvider('alran.changes', changes),
-    vscode.window.registerTreeDataProvider('alran.agents', agents),
-    vscode.window.registerTreeDataProvider('alran.capabilities', capabilities),
+    // The pages next to the chat live in the chat webview; these open them. Not listed in the
+    // command palette on purpose: they are what links, the status bar and slash commands call.
+    ...(['sessions', 'changes', 'agents', 'capabilities', 'account'] as const).map((page) =>
+      vscode.commands.registerCommand(`alran.${page}.focus`, () => hub.showPage(page)),
+    ),
     vscode.languages.registerCodeActionsProvider({ scheme: 'file' }, new AlranCodeActions(), {
       providedCodeActionKinds: AlranCodeActions.kinds,
     }),
@@ -141,12 +149,16 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
   void account
     .refresh()
     .finally(() => capabilities.loadPlugins())
+    // The agent and the first Session start with the editor, not when the chat view is first
+    // opened: the model picker is there and the first message goes out at once.
+    .finally(() => (runtime.configuration.get('autoConnect', true) ? runtime.startFirstSession() : undefined))
     .catch(() => undefined);
   return {
     runtime,
     hub,
     actions,
     account,
+    panels,
     store,
     authProvider: auth.provider,
     ...(chat.participant ? { chatParticipant: chat.participant } : {}),

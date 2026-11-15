@@ -624,6 +624,29 @@ export class AlranActions {
     if (session) this.terminalReattach.set(terminal, session.id);
   }
 
+  /**
+   * Takes a Session back from the terminal. While the TUI still has it open the answer is a plain
+   * sentence, not a restart of the whole agent; the chat also reconnects by itself when the terminal closes.
+   */
+  async reconnectSession(): Promise<void> {
+    const session = this.active;
+    if (!session) return;
+    if (session.meta.detachedBy !== 'tui') {
+      await this.restartAgent();
+      return;
+    }
+    const terminalOpen = [...this.terminalReattach.entries()].some(
+      ([terminal, id]) => id === session.id && terminal.exitStatus === undefined,
+    );
+    if (terminalOpen) {
+      void vscode.window.showInformationMessage(
+        'This session is still open in the terminal. Leave it there (type /exit or press Ctrl+C twice) and this chat reconnects by itself.',
+      );
+      return;
+    }
+    await this.guarded(() => this.runtime.manager.reattachSession(session.id));
+  }
+
   private async reattachAfterTui(sessionId: string): Promise<void> {
     await this.guarded(() => this.runtime.manager.reattachSession(sessionId));
   }

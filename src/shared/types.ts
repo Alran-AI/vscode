@@ -4,6 +4,7 @@
  */
 
 import type { FailureView } from './errors';
+import type { OutputRateView } from './rate';
 
 export type ToolStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 
@@ -231,12 +232,16 @@ export interface SessionMeta {
   config: ConfigOptionView[];
   commands: CommandView[];
   usage?: UsageView;
+  /** How fast the model is writing, for the turn that is running or the last one. */
+  outputRate?: OutputRateView;
   goal?: GoalView | null;
   goalsEnabled: boolean;
   delegation: DelegationMemberView[];
   queue: QueuedPromptView[];
   isSide?: boolean;
   canRetry: boolean;
+  /** Why a detached Session is detached: the terminal (TUI) has it open, or the agent went away. */
+  detachedBy?: 'tui' | 'agent';
 }
 
 export interface SessionSnapshot {

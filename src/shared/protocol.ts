@@ -1,4 +1,5 @@
 import type { FailureAction } from './errors';
+import type { PanelBadges, PanelPage, PanelView } from './panels';
 import type {
   AccountView,
   ChatPreferences,
@@ -28,7 +29,11 @@ export type HostMessage =
   | { readonly type: 'addAttachments'; readonly attachments: readonly ComposerAttachment[] }
   | { readonly type: 'setDraft'; readonly text: string; readonly send?: boolean; readonly menu?: boolean }
   | { readonly type: 'focusComposer' }
-  | { readonly type: 'account'; readonly account: AccountView };
+  | { readonly type: 'account'; readonly account: AccountView }
+  | { readonly type: 'panel'; readonly view: PanelView }
+  | { readonly type: 'badges'; readonly badges: PanelBadges }
+  /** Switches the page this chat surface shows (a command asked for the account, the Store...). */
+  | { readonly type: 'showPage'; readonly page: PanelPage | 'chat' };
 
 export type QueueOperation =
   | { readonly op: 'delete'; readonly id: string }
@@ -87,4 +92,8 @@ export type WebviewMessage =
   | { readonly type: 'openSubagent'; readonly sessionId: string }
   | { readonly type: 'signIn'; readonly method?: 'default' | 'options' | 'api-key' | 'provider' }
   | { readonly type: 'failureAction'; readonly action: FailureAction }
-  | { readonly type: 'command'; readonly command: string; readonly args?: readonly unknown[] };
+  | { readonly type: 'command'; readonly command: string; readonly args?: readonly unknown[] }
+  /** The page this surface now shows; the host keeps its data current while it is open. */
+  | { readonly type: 'page'; readonly page: PanelPage | 'chat' }
+  | { readonly type: 'panelRow'; readonly rowId: string; readonly actionId?: string }
+  | { readonly type: 'panelToolbar'; readonly actionId: string };

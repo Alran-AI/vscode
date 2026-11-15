@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { mergeCommands } from '../../shared/commands';
+import { formatTokensPerSecond } from '../../shared/rate';
 import type {
   ChatPreferences,
   CommandView,
@@ -451,6 +452,14 @@ export function Composer({
           {effortOption ? <ConfigSelect option={effortOption} icon="lightbulb" /> : null}
           {permissionOption ? <ConfigSelect option={permissionOption} icon="shield" /> : null}
           <span class="spacer" />
+          {meta?.outputRate ? (
+            <span
+              class={`rate-meter${meta.outputRate.live ? ' live' : ''}`}
+              title={`${meta.outputRate.live ? 'Writing at' : 'Last answer was written at'} about ${formatTokensPerSecond(meta.outputRate.tokensPerSecond)} tokens per second (estimated from the text length)`}
+            >
+              ⚡ {meta.outputRate.estimated ? '~' : ''}{formatTokensPerSecond(meta.outputRate.tokensPerSecond)} tok/s
+            </span>
+          ) : null}
           {usagePercent !== undefined && usage ? (
             <span
               class={`context-meter${usagePercent >= 80 ? ' high' : ''}`}

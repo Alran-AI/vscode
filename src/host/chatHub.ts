@@ -7,12 +7,14 @@ import { parseSlash } from '../shared/commands';
 import type { HostMessage, QueueOperation, GoalOperation, WebviewMessage } from '../shared/protocol';
 import type { ComposerAttachment, MentionCandidate, TranscriptItem } from '../shared/types';
 import type { FailureAction } from '../shared/errors';
+import type { PanelPage } from '../shared/panels';
 import { locateFile } from '../core/paths';
 import { planTerminalText } from '../core/terminalText';
 import type { AccountService } from './account';
 import type { AlranActions } from './actions';
 import { attachmentsFromUris, fileAttachment, findFileMentions, relativeLabel } from './context';
 import { openPermissionPreview, openToolDiff } from './diff';
+import type { PanelHost } from './panels';
 import type { AlranRuntime } from './runtime';
 import type { SlashRouter } from './slash';
 
@@ -21,6 +23,8 @@ const ITEM_FLUSH_MS = 33;
 interface ChatSurface {
   readonly webview: vscode.Webview;
   ready: boolean;
+  /** The page this surface shows; the sidebar and each editor tab have their own. */
+  page: PanelPage | 'chat';
 }
 
 /** Connects the chat webviews (sidebar and editor tabs) to the Session state. */
@@ -39,6 +43,8 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
   private accountListener: vscode.Disposable | undefined;
   private accountService: AccountService | undefined;
   pluginMentions: () => readonly MentionCandidate[] = () => [];
+  private panelHost: PanelHost | undefined;
+  private lastBadges = '';
 
   constructor(private readonly runtime: AlranRuntime) {
     this.disposables.push(
@@ -64,6 +70,42 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
         }
       }),
     );
+  }
+
+  /** The pages next to the chat. Set once, before the first webview loads. */
+  set pages(host: PanelHost) {
+    this.panelHost = host;
+    this.disposables.push(
+      host.onDidChange((page) => {
+        for (const surface of this.surfaces) if (surface.ready && surface.page === page) void this.sendPanel(surface, page);
+        this.sendBadges();
+      }),
+      this.runtime.onDidChangeTabs(() => this.sendBadges()),
+      this.runtime.onDidChangeFiles(() => this.sendBadges()),
+      this.runtime.onDidChangeMeta(() => this.sendBadges()),
+    );
+  }
+
+  private sendBadges(): void {
+    if (!this.panelHost) return;
+    const badges = this.panelHost.badges();
+    const key = `${String(badges.changes)}/${String(badges.agents)}`;
+    if (key === this.lastBadges) return;
+    this.lastBadges = key;
+    this.broadcast({ type: 'badges', badges });
+  }
+
+  private async sendPanel(surface: ChatSurface, page: PanelPage): Promise<void> {
+    if (!this.panelHost) return;
+    const view = await this.panelHost.build(page);
+    // The person may have moved on while the page was loading.
+    if (surface.page === page) this.post(surface, { type: 'panel', view });
+  }
+
+  /** Shows a page (the account, the capabilities...) in the visible chat, opening the side bar if needed. */
+  async showPage(page: PanelPage | 'chat'): Promise<void> {
+    await this.focus();
+    this.deliver({ type: 'showPage', page });
   }
 
   set account(service: AccountService) {
@@ -106,7 +148,7 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private attach(webview: vscode.Webview, kind: 'sidebar' | 'panel'): ChatSurface {
-    const surface: ChatSurface = { webview, ready: false };
+    const surface: ChatSurface = { webview, ready: false, page: 'chat' };
     this.surfaces.add(surface);
     webview.html = this.renderHtml(webview, kind);
     webview.onDidReceiveMessage((message: WebviewMessage) => {
@@ -226,12 +268,11 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
     const label = this.activeFileLabel();
     this.post(surface, { type: 'activeFile', ...(label ? { label } : {}) });
     if (this.accountService) this.post(surface, { type: 'account', account: this.accountService.view });
+    if (this.panelHost) this.post(surface, { type: 'badges', badges: this.panelHost.badges() });
     for (const message of this.queuedOutbound.splice(0)) this.post(surface, message);
     if (this.runtime.configuration.get('autoConnect', true)) {
       // Startup failures are shown by the connection card in the webview.
-      await this.runtime.ensureSession().catch((error: unknown) => {
-        this.runtime.output.warn(`startup: ${String(error)}`);
-      });
+      await this.runtime.startFirstSession();
     }
   }
 
@@ -360,6 +401,16 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
       case 'failureAction':
         await this.runFailureAction(message.action);
         break;
+      case 'page':
+        surface.page = message.page;
+        if (message.page !== 'chat') await this.sendPanel(surface, message.page);
+        break;
+      case 'panelRow':
+        await this.panelHost?.run(message.rowId, message.actionId);
+        break;
+      case 'panelToolbar':
+        await this.panelHost?.runToolbar(message.actionId);
+        break;
       case 'command':
         // The transcript renders model output, so the webview only reaches our own commands.
         if (message.command.startsWith('alran.')) {
@@ -382,7 +433,7 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
         await this.accountService?.openBilling();
         break;
       case 'show-usage':
-        await vscode.commands.executeCommand('alran.account.focus');
+        await this.showPage('account');
         await this.accountService?.refresh({ usage: true });
         break;
       case 'switch-model':
@@ -392,7 +443,7 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
         await actions.useWerk();
         break;
       case 'provider-settings':
-        await vscode.commands.executeCommand('alran.capabilities.focus');
+        await this.showPage('capabilities');
         break;
       case 'compact':
         await actions.agentCommand('compact');

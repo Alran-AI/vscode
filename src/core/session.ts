@@ -12,6 +12,7 @@ import {
   type RuntimeQueueItem,
 } from '../acp/agent';
 import { describeFailure, type FailureView } from '../shared/errors';
+import { OutputRateTracker } from '../shared/rate';
 import { isRecord, SessionModel, toConfigViews, toModeViews } from '../shared/model';
 import { AGENT_HANDLED_COMMANDS, parseSlash } from '../shared/commands';
 import type {
@@ -74,6 +75,7 @@ const ACTIVE_TURN_PATTERN = /already has an active Turn/iu;
 const ACTIVE_TURN_RETRY_ATTEMPTS = 10;
 /** Quiet period after a turn in which trailing runtime events are not a new turn. */
 const TRAILING_EVENT_WINDOW_MS = 1_500;
+const RATE_EMIT_INTERVAL_MS = 500;
 const RESYNC_INITIAL_DELAY_MS = 1_200;
 const RESYNC_FINAL_DELAY_MS = 400;
 const RESYNC_MAX_DELAY_MS = 20_000;
@@ -100,6 +102,8 @@ export class SessionController {
   private capture: { text: string } | undefined;
   /** A runtime-queued turn was admitted during this prompt and will run after it. */
   private detachedTurnExpected = false;
+  private readonly outputRate = new OutputRateTracker();
+  private lastRateEmit = 0;
 
   constructor(
     readonly id: string,
@@ -169,6 +173,7 @@ export class SessionController {
       this.model.settle({ closeTools: false });
       this.applyControlState(response);
       this.detached = false;
+      this.meta.detachedBy = undefined;
     } finally {
       this.model.restoreClientItems();
       this.loading = false;
@@ -182,12 +187,14 @@ export class SessionController {
   markReady(): void {
     this.loading = false;
     this.detached = false;
+    this.meta.detachedBy = undefined;
     this.refreshStatus();
   }
 
   /** The agent process went away; everything in flight is over. */
-  markDetached(reason: string): void {
+  markDetached(reason: string, by: 'tui' | 'agent' = 'agent'): void {
     this.detached = true;
+    this.meta.detachedBy = by;
     this.loading = false;
     this.cancelling = false;
     this.background = false;
@@ -227,6 +234,7 @@ export class SessionController {
     const result = this.model.apply(update);
     if (result.metaChanged) this.emitMeta();
     if (this.replaying) return;
+    this.noteOutput(update);
     if (result.items.length > 0) this.emitItems(result.items);
     for (const item of result.items) {
       if (item.kind === 'tool') void this.trackTool(item.id);
@@ -238,6 +246,21 @@ export class SessionController {
     if (update.sessionUpdate === 'usage_update' && this.background && !this.promptActive) {
       this.finishDetachedTurn();
     }
+  }
+
+  /** Feeds the speed meter with streamed text; the figure reaches the chat a few times a second. */
+  private noteOutput(update: acp.SessionUpdate): void {
+    if (!this.promptActive) return;
+    if (update.sessionUpdate !== 'agent_message_chunk' && update.sessionUpdate !== 'agent_thought_chunk') return;
+    if (update.content.type !== 'text') return;
+    const now = Date.now();
+    this.outputRate.add(update.content.text.length, now);
+    if (now - this.lastRateEmit < RATE_EMIT_INTERVAL_MS) return;
+    const view = this.outputRate.view(true);
+    if (!view) return;
+    this.lastRateEmit = now;
+    this.meta.outputRate = view;
+    this.emitMeta();
   }
 
   handleRuntimeQueue(items: readonly RuntimeQueueItem[]): void {
@@ -364,6 +387,8 @@ export class SessionController {
     while (this.replaying) await delay(25);
     this.lastInput = input;
     this.meta.canRetry = false;
+    this.meta.outputRate = undefined;
+    this.outputRate.reset();
     this.background = false;
     clearTimeout(this.resyncTimer);
     this.emitItems([this.model.addUser(toUserContent(input))]);
@@ -404,6 +429,9 @@ export class SessionController {
     this.promptActive = false;
     this.cancelling = false;
     this.lastTurnEndedAt = Date.now();
+    const finalRate = this.outputRate.view(false);
+    if (finalRate) this.meta.outputRate = finalRate;
+    else this.meta.outputRate = undefined;
     this.emitItems(this.model.settle({ closeTools: true }));
     this.services.listener.turn(this.id, false);
     void this.changes.pruneUnchanged().then((changed) => {

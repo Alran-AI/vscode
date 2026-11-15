@@ -63,7 +63,7 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
   const refreshCapabilities = () => capabilities.refresh();
 
   const withProgress = (title: string, run: () => Promise<void>) =>
-    vscode.window.withProgress({ location: { viewId: 'alran.capabilities' }, title }, run);
+    vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title }, run);
 
   /** Install, remove, switch on or off: the Store's own flow, so an approval is asked for when needed. */
   const pluginAction = (action: 'install' | 'remove' | 'enable' | 'disable', verb: string) => async (node: CapabilityNode) => {
@@ -349,7 +349,7 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
     'alran.providerTest': async (node: CapabilityNode) => {
       if (node.kind !== 'provider') return;
       const result = await vscode.window.withProgress(
-        { location: { viewId: 'alran.capabilities' }, title: `Testing ${node.provider.name}…` },
+        { location: vscode.ProgressLocation.Window, title: `Testing ${node.provider.name}…` },
         async () => cli.providers.test(await runtime.cliContext(), node.provider.providerId),
       );
       runtime.output.info(`provider test ${node.provider.providerId}: ${result.stdout.trim()} ${result.stderr.trim()}`);
@@ -400,6 +400,7 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
     'alran.update': () => actions.update(),
     'alran.installCli': () => actions.offerInstall(),
     'alran.restartAgent': () => actions.restartAgent(),
+    'alran.reconnectSession': () => actions.reconnectSession(),
     'alran.openConfig': () => actions.openConfigFile(),
     'alran.openSettings': () => actions.openSettings(),
     'alran.openTui': () => actions.openTui(),

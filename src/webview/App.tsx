@@ -3,8 +3,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { describeStartupFailure } from '../shared/errors';
 import type { AccountView, ConnectionState, GoalView, SessionMeta, TabView } from '../shared/types';
 import { Composer } from './components/Composer';
+import { PageNav, PagePanel } from './components/Pages';
 import { Icon, Transcript } from './components/Transcript';
-import { composerEvents, post, useChatState } from './store';
+import { composerEvents, openPage, post, useChatState } from './store';
 
 const MENU_ACTIONS: ReadonlyArray<readonly [string, string, string]> = [
   ['Fork this session', 'repo-forked', 'alran.forkSession'],
@@ -348,7 +349,7 @@ function Welcome({ account }: { readonly account: AccountView }) {
 
 export function App() {
   const state = useChatState();
-  const { connection, tabs, activeId, meta, items, preferences, activeFile, account, surface } = state;
+  const { connection, tabs, activeId, meta, items, preferences, activeFile, account, surface, page, panel, badges } = state;
   const status = meta?.status;
   const busy = status === 'running' || status === 'awaiting-input' || status === 'cancelling';
   const hasConversation = items.length > 0;
@@ -358,8 +359,18 @@ export function App() {
     connection.state === 'error' ||
     (connection.state === 'auth-required' && !hasConversation) ||
     (connection.state === 'connecting' && !meta);
+  if (page !== 'chat') {
+    // The pages next to the chat. The composer is not shown: nothing here is a message.
+    return (
+      <div class="app">
+        <PageNav page={page} badges={badges} onOpen={openPage} />
+        <PagePanel page={page} view={panel?.page === page ? panel : undefined} />
+      </div>
+    );
+  }
   return (
     <div class="app">
+      <PageNav page={page} badges={badges} onOpen={openPage} />
       <Header tabs={tabs} {...(activeId ? { activeId } : {})} surface={surface} />
       {meta?.goal ? <GoalBar goal={meta.goal} /> : null}
       {meta ? <DelegationBar meta={meta} /> : null}
@@ -376,9 +387,12 @@ export function App() {
       ) : null}
       {status === 'detached' && connection.state !== 'auth-required' ? (
         <div class="delegation-bar warning">
-          <Icon name="plug" /> This session is not connected to the agent.
+          <Icon name={meta?.detachedBy === 'tui' ? 'terminal' : 'plug'} />
+          {meta?.detachedBy === 'tui'
+            ? ' This session is open in the terminal. It comes back here when you close it there.'
+            : ' This session is not connected to the agent.'}
           <span class="spacer" />
-          <button class="link-button" onClick={() => post({ type: 'command', command: 'alran.restartAgent' })}>Reconnect</button>
+          <button class="link-button" onClick={() => post({ type: 'command', command: 'alran.reconnectSession' })}>Reconnect</button>
         </div>
       ) : null}
       {blocked ? (

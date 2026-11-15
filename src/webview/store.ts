@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 
+import type { PanelBadges, PanelPage, PanelView } from '../shared/panels';
 import type { HostMessage, WebviewMessage } from '../shared/protocol';
 import type {
   AccountView,
@@ -31,6 +32,11 @@ export interface ChatState {
   account: AccountView;
   /** `sidebar` for the view, `panel` for a chat opened in an editor tab. */
   surface: 'sidebar' | 'panel';
+  /** Which page is showing: the chat, or one of the pages next to it. */
+  page: PanelPage | 'chat';
+  /** The data of the open page; a page that has not arrived yet shows as loading. */
+  panel?: PanelView;
+  badges: PanelBadges;
 }
 
 let state: ChatState = {
@@ -40,6 +46,8 @@ let state: ChatState = {
   items: [],
   account: { state: 'unknown' },
   surface: document.body.dataset.surface === 'panel' ? 'panel' : 'sidebar',
+  page: 'chat',
+  badges: { changes: 0, agents: 0 },
   preferences: {
     enterWhileRunning: 'steer',
     showThinking: true,
@@ -49,6 +57,12 @@ let state: ChatState = {
 };
 
 const listeners = new Set<() => void>();
+
+/** Opens a page and tells the host, which keeps its data current while it stays open. */
+export function openPage(page: PanelPage | 'chat'): void {
+  update({ page, panel: page === 'chat' || state.panel?.page === page ? state.panel : undefined });
+  post({ type: 'page', page });
+}
 
 function update(patch: Partial<ChatState>): void {
   state = { ...state, ...patch };
@@ -129,6 +143,16 @@ export function handleHostMessage(message: HostMessage): void {
       break;
     case 'account':
       update({ account: message.account });
+      break;
+    case 'panel':
+      // A late answer for a page the person already left is dropped.
+      if (message.view.page === state.page) update({ panel: message.view });
+      break;
+    case 'badges':
+      update({ badges: message.badges });
+      break;
+    case 'showPage':
+      openPage(message.page);
       break;
   }
 }

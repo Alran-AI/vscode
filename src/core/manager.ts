@@ -176,6 +176,16 @@ export class SessionManager {
     return session;
   }
 
+  /**
+   * The agent runs but could not open the first Session (for example the model setup is refused).
+   * Showing it as a connection error gives the chat its explanation and a retry, where a log line
+   * would leave an empty chat that silently ignores the first message.
+   */
+  reportStartupFailure(error: unknown): void {
+    if (this.active || this.currentConnection.state === 'missing-binary') return;
+    this.setConnection({ state: 'error', detail: errorMessage(error) });
+  }
+
   /** Opens a fresh Session. `activate: false` keeps the chat on its current tab. */
   async newSession(cwd: string, options: { readonly activate?: boolean } = {}): Promise<SessionController> {
     const agent = await this.connect();
@@ -248,7 +258,7 @@ export class SessionManager {
   async detachForTui(id: string): Promise<void> {
     const session = this.sessions.get(id);
     if (!session) return;
-    session.markDetached('This Session is open in the TUI.');
+    session.markDetached('This Session is open in the TUI.', 'tui');
     await this.agent?.closeSession(id).catch(() => undefined);
   }
 

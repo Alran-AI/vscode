@@ -215,6 +215,42 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
     },
   ],
   [
+    'shows every page next to the chat as rows of its own, and runs their buttons through the host',
+    async (api) => {
+      const { panels } = api;
+      const sessionsView = await panels.build('sessions');
+      assert.ok(sessionsView.rows.length > 0, 'the open session is listed');
+      assert.ok(sessionsView.toolbar.some((action) => action.label === 'New session'));
+      const openRow = sessionsView.rows.find((row) => row.actions.some((action) => action.label.startsWith('Fork')));
+      assert.ok(openRow, 'a session row offers Fork');
+
+      const capabilitiesView = await panels.build('capabilities');
+      assert.deepEqual(
+        capabilitiesView.rows.map((row) => row.label),
+        ['Skills', 'MCP Servers', 'Plugins', 'Model Providers'],
+      );
+      assert.ok(capabilitiesView.rows.every((row) => row.group === true && (row.children?.length ?? 0) > 0));
+      const providers = capabilitiesView.rows[3]!;
+      assert.ok(providers.children!.some((row) => row.actions.some((action) => action.label.startsWith('Test'))));
+
+      const accountView = await panels.build('account');
+      assert.ok(
+        accountView.rows.some((row) => row.label === 'Alran Code extension' && /^\d+\.\d+\.\d+/u.test(row.description ?? '')),
+        'the account page names the installed extension version',
+      );
+
+      // A button is a stored invocation: an id the host never handed out does nothing.
+      await panels.run('sessions:999');
+      await panels.runToolbar('not-a-real-action');
+
+      // The old tree-view focus commands now open the page in the chat.
+      for (const page of ['sessions', 'changes', 'agents', 'capabilities', 'account']) {
+        await vscode.commands.executeCommand(`alran.${page}.focus`);
+      }
+      assert.equal((await panels.build('agents')).rows.length >= 0, true);
+    },
+  ],
+  [
     'runs the client-side slash commands',
     async (api) => {
       const session = api.runtime.manager.active!;
