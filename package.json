@@ -95,6 +95,30 @@
         "icon": "$(empty-window)"
       },
       {
+        "command": "alran.changes.focus",
+        "title": "Show Changes",
+        "category": "Alran",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "alran.sessions.focus",
+        "title": "Show Sessions",
+        "category": "Alran",
+        "icon": "$(history)"
+      },
+      {
+        "command": "alran.agents.focus",
+        "title": "Show Sub-Agents",
+        "category": "Alran",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "alran.capabilities.focus",
+        "title": "Show Skills, MCP Servers, Plugins and Providers",
+        "category": "Alran",
+        "icon": "$(extensions)"
+      },
+      {
         "command": "alran.newSession",
         "title": "New Session",
         "category": "Alran",

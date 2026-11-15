@@ -37,11 +37,13 @@ The extension is a full editor front end for the real Alran Code CLI. Tools, per
 
 Streaming answers and reasoning, tool calls with inline diffs, several sessions in tabs, and a chat that can also open as an editor tab. `@` adds files and Plugins, `Ctrl+Alt+L` adds the selection, images go in by paste or drop, and the current file is shared unless you turn it off.
 
-While Alran works, **Enter** steers the running task, **Ctrl+Enter** queues the next message and **Esc** stops. Queued messages can be edited, removed or sent right away.
+While Alran works, **Enter** steers the running task, **Ctrl+Enter** queues the next message and **Esc** stops. Queued messages can be edited, removed or sent right away. What you typed stays where you left it: switch to another tab, another session or even restart the agent, and the draft is still in the composer.
+
+A long conversation stays readable: runs of reads and searches fold into one line, answered permission requests shrink to a line, a failed tool call says why under its row, and a **Jump to latest** button brings you back to the end.
 
 ### You stay in control
 
-Alran has one surface: tabs along the top of the chat switch between **Chat, Sessions, Changes, Agents, Capabilities** and **Account**, in the side bar or in an editor tab. Every edit opens as a real diff next to your code. The **Changes** tab lists everything a session changed, with per-file or full revert. Plan Mode (`Shift+Tab`) lets Alran plan before it touches anything.
+Alran has one surface: tabs along the top of the chat switch between **Chat, Sessions, Changes, Agents, Capabilities** and **Account**, in the side bar or in an editor tab. Every edit opens as a real diff next to your code. The **Changes** tab lists everything a session changed, with per-file or full revert. Plan Mode (`Shift+Tab`) lets Alran plan before it touches anything. A dot on the **Chat** tab tells you, on every page, that Alran is working (blue) or waiting for your answer (yellow); when the request is out of sight, **Alran is waiting for you** takes you to it.
 
 ![The diff of an edit beside the conversation that made it](media/screenshots/diff.png)
 
@@ -97,7 +99,8 @@ Type `/` in the chat, or run **Alran: Slash Commands…**, to see every command 
 - **Accounts menu**: your Ottili account, with sign-out, next to your other accounts.
 - **Terminal profile**: *Alran Code* in the terminal's profile list opens the full terminal UI.
 - **Quick Fix and context menus**: *Explain*, *Fix* and *Fix problems in this file* on selections and diagnostics; *Add to chat* from the Explorer, editor tabs and the terminal.
-- **Status bar**: model, permission mode and context usage of the current session, and account and credit at a glance.
+- **Status bar**: model, permission mode and context usage of the current session, and account and credit at a glance. It turns yellow when Alran waits for you.
+- **Command palette**: *Alran: Show Changes*, *Show Sessions*, *Show Sub-Agents* and *Show Skills, MCP Servers, Plugins and Providers* open the tabs of the chat directly.
 
 ### Sessions, Goals and sub-agents
 

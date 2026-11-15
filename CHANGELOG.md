@@ -22,6 +22,7 @@ The first public release. Needs the Alran CLI 0.9.0 or newer.
 - **Your own messages** have *Copy* and *Use as a new message*; a pasted log or stack trace is folded with *Show more*. Copying answers in place (the button shows a check) and the buttons are reachable with the keyboard.
 - **A failed tool call says why** in one line under its row, without opening it.
 - **Changes** names how many lines each file gained and lost (`+14 −3`); once earlier sessions exist, the open ones sit under **Open now**.
+- **Command palette:** *Show Changes*, *Show Sessions*, *Show Sub-Agents* and *Show Skills, MCP Servers, Plugins and Providers* open the tabs of the chat directly.
 - **The status bar** turns yellow and says *Alran: waiting for you* when a session needs an answer, warns from 80 % context, and its tooltips say what a click does.
 - **Images and drops.** Attached images show a thumbnail; dragging files onto the composer shows a drop zone.
 - **Context meter** is a ring; at 80 % it turns yellow and a click compacts the conversation.
