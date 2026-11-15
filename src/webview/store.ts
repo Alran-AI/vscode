@@ -58,6 +58,43 @@ let state: ChatState = {
 
 const listeners = new Set<() => void>();
 
+/** What was typed but not sent. Kept here, not in the composer, which is rebuilt whenever a page or a tab changes. */
+export interface Draft {
+  readonly text: string;
+  readonly attachments: readonly ComposerAttachment[];
+  readonly includeActive: boolean | undefined;
+}
+
+const NO_SESSION = 'none';
+const drafts = new Map<string, Draft>();
+
+export function draftKey(sessionId: string | undefined): string {
+  return sessionId ?? NO_SESSION;
+}
+
+export function readDraft(key: string): Draft | undefined {
+  return drafts.get(key);
+}
+
+/** An empty draft is forgotten, so the map only holds what someone would miss. */
+export function saveDraft(key: string, draft: Draft): void {
+  if (draft.text === '' && draft.attachments.length === 0 && draft.includeActive === undefined) drafts.delete(key);
+  else drafts.set(key, draft);
+}
+
+/** Drops the drafts of sessions that are closed, and hands a draft typed before the first session to it. */
+function reconcileDrafts(tabs: readonly TabView[], activeId: string | undefined): void {
+  const open = new Set(tabs.map((tab) => tab.id));
+  if (state.activeId === undefined && activeId !== undefined) {
+    const early = drafts.get(NO_SESSION);
+    if (early && !drafts.has(activeId)) drafts.set(activeId, early);
+    drafts.delete(NO_SESSION);
+  }
+  // An empty list is a restart of the agent, not a close of every session: keep what was typed.
+  if (tabs.length === 0) return;
+  for (const key of [...drafts.keys()]) if (key !== NO_SESSION && !open.has(key)) drafts.delete(key);
+}
+
 /** Opens a page and tells the host, which keeps its data current while it stays open. */
 export function openPage(page: PanelPage | 'chat'): void {
   update({ page, panel: page === 'chat' || state.panel?.page === page ? state.panel : undefined });
@@ -112,6 +149,7 @@ export function handleHostMessage(message: HostMessage): void {
       update({ connection: message.connection });
       break;
     case 'tabs':
+      reconcileDrafts(message.tabs, message.activeId);
       update({ tabs: message.tabs, activeId: message.activeId });
       break;
     case 'snapshot':

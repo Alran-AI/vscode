@@ -243,6 +243,47 @@ button:disabled {
 
 /* Transcript */
 
+.transcript-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 11px;
+  font-size: 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editorWidget-background, var(--surface));
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+}
+
+.jump-latest:hover {
+  background: var(--hover);
+}
+
+.jump-latest.waiting {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-color: transparent;
+}
+
+.jump-latest.waiting:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
 .transcript {
   flex: 1;
   overflow-y: auto;
@@ -289,15 +330,32 @@ button:disabled {
   position: relative;
 }
 
-.message-actions {
-  display: flex;
-  justify-content: flex-end;
-  opacity: 0;
-  height: 0;
+.message.user {
+  position: relative;
 }
 
-.message.assistant:hover .message-actions {
+/* A small floating toolbar on the lower edge of a message: on hover, and for the keyboard on focus. */
+.message-actions {
+  position: absolute;
+  right: 4px;
+  bottom: -11px;
+  z-index: 2;
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--vscode-editorWidget-background, var(--surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 4px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.25));
+  transition: opacity 0.12s ease;
+}
+
+.message:hover .message-actions,
+.message:focus-within .message-actions {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .cursor {
@@ -315,6 +373,20 @@ button:disabled {
   align-items: center;
   gap: 6px;
   font-size: 12px;
+  min-width: 0;
+}
+
+.working-activity {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.working-time {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
 }
 
 /* Markdown */
@@ -530,6 +602,47 @@ button:disabled {
   white-space: nowrap;
 }
 
+/* Every tool row keeps the same gutter on the right, so the status marks line up; the quick action sits in it. */
+.tool-line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: 24px;
+}
+
+.tool-line .tool-header {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-quick {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  color: var(--subtle);
+}
+
+.tool-line:hover .tool-quick,
+.tool-line:focus-within .tool-quick {
+  opacity: 1;
+}
+
+.tool-stat {
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.stat-add {
+  color: var(--success);
+}
+
+.stat-remove {
+  color: var(--error);
+}
+
 .tool-count {
   font-size: 11px;
   white-space: nowrap;
@@ -633,6 +746,35 @@ button:disabled {
 
 .card.permission:not(.resolved) {
   border-color: var(--warning);
+  border-left-width: 3px;
+}
+
+.card.permission:not(.resolved) > .card-title .codicon {
+  color: var(--warning);
+}
+
+.card.resolved {
+  gap: 4px;
+}
+
+.card.resolved > .card-title {
+  font-weight: normal;
+  color: var(--subtle);
+}
+
+.card.resolved > .card-title .codicon {
+  color: var(--success);
+}
+
+.card-title-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.card-subtitle {
+  margin-top: -4px;
+  color: var(--subtle);
+  font-size: 12px;
 }
 
 .card.question:not(.resolved) {
@@ -669,6 +811,10 @@ button:disabled {
 }
 
 .card-resolution {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--subtle);
   font-size: 12px;
 }
@@ -786,7 +932,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* "safe": a tall welcome in a short window scrolls from its top instead of losing it. */
+  justify-content: safe center;
   gap: 8px;
   padding: 16px;
   color: var(--subtle);
@@ -940,6 +1087,41 @@ kbd {
   color: var(--subtle);
 }
 
+.chip-image {
+  padding-left: 2px;
+}
+
+.chip-thumb {
+  width: 16px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 2px;
+  flex: none;
+}
+
+.composer-box {
+  position: relative;
+}
+
+.composer-box.drag-over {
+  border-color: var(--accent);
+  border-style: dashed;
+}
+
+.drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--radius);
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--vscode-input-background) 88%, transparent);
+  pointer-events: none;
+}
+
 .chip-remove {
   display: inline-flex;
   opacity: 0.7;
@@ -1007,13 +1189,36 @@ kbd {
   color: var(--vscode-foreground);
 }
 .context-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   color: var(--subtle);
   padding: 0 4px;
+  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
 }
 
 .context-meter.high {
   color: var(--warning);
+}
+
+.context-meter.full {
+  color: var(--error);
+}
+
+button.context-meter:hover {
+  background: var(--hover);
+}
+
+.context-ring {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  background: conic-gradient(currentColor var(--usage, 0%), color-mix(in srgb, currentColor 24%, transparent) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent 54%, #000 58%);
+  mask: radial-gradient(farthest-side, transparent 54%, #000 58%);
 }
 
 .menu {
@@ -1049,6 +1254,28 @@ kbd {
 
 .menu-label {
   white-space: nowrap;
+}
+
+.menu-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.menu-empty code {
+  font-family: var(--mono);
+}
+
+mark.match {
+  background: none;
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
 }
 
 .menu-detail {
@@ -1247,6 +1474,22 @@ button.account-line:hover {
   color: var(--vscode-foreground);
   border-bottom-color: var(--accent);
 }
+.nav-dot {
+  position: absolute;
+  top: 4px;
+  left: 18px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+.nav-dot.working {
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.nav-dot.waiting {
+  background: var(--warning);
+}
 .nav-badge {
   min-width: 15px;
   height: 15px;
@@ -1287,6 +1530,88 @@ button.account-line:hover {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--subtle);
+}
+.page-count,
+.row-count {
+  min-width: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  border-radius: 9px;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: 400;
+  color: var(--subtle);
+  background: var(--hover);
+  flex: none;
+}
+.row-count {
+  margin-left: auto;
+}
+.page-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 10px 6px;
+  padding: 0 4px 0 7px;
+  border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: var(--radius);
+  background: var(--vscode-input-background);
+  flex: none;
+}
+.page-filter:focus-within {
+  border-color: var(--accent);
+}
+.page-filter > .codicon {
+  color: var(--subtle);
+}
+.filter-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: none;
+  border: none;
+  outline: none;
+}
+.filter-input::-webkit-search-cancel-button {
+  display: none;
+}
+.empty-mark .codicon {
+  font-size: 28px;
+  color: var(--subtle);
+  opacity: 0.7;
+}
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 12px;
+}
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.skeleton-icon,
+.skeleton-bar {
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--hover) 25%, color-mix(in srgb, var(--hover) 40%, transparent) 50%, var(--hover) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.skeleton-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
 }
 .page-rows {
   flex: 1;
@@ -1357,4 +1682,99 @@ button.account-line:hover {
 }
 .page-empty {
   text-align: center;
+}
+
+/* ---- Welcome: starting points as cards ---- */
+.starters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 6px;
+  width: min(460px, 100%);
+  margin: 6px 0;
+  text-align: left;
+}
+.starter {
+  display: flex;
+  align-items: flex-start;
+  text-align: left;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--vscode-foreground);
+}
+.starter:hover {
+  background: var(--hover);
+  border-color: var(--accent);
+}
+.starter > .codicon {
+  margin-top: 1px;
+  color: var(--vscode-textLink-foreground);
+}
+.starter-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.starter-label {
+  font-weight: 600;
+}
+.starter-detail {
+  font-size: 11px;
+  color: var(--subtle);
+}
+
+/* ---- Goal progress ---- */
+.goal-bar {
+  position: relative;
+}
+.goal-bar[style*='--progress']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  width: var(--progress);
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.goal-bar.status-paused[style*='--progress']::after,
+.goal-bar.status-blocked[style*='--progress']::after {
+  background: var(--warning);
+}
+
+/* ---- Motion and contrast ---- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .codicon-modifier-spin {
+    animation: none !important;
+  }
+}
+@media (forced-colors: active) {
+  .nav-button.active {
+    border-bottom-color: Highlight;
+  }
+  .nav-dot,
+  .dot,
+  .context-ring {
+    forced-color-adjust: none;
+  }
+  .nav-dot.waiting,
+  .dot.attention {
+    background: Highlight;
+  }
+  .message-actions,
+  .jump-latest,
+  .starter {
+    border-color: CanvasText;
+  }
 }

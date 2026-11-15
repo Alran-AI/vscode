@@ -12,6 +12,20 @@ The first public release. Needs the Alran CLI 0.9.0 or newer.
 - A session you open in the terminal says so, and comes back by itself when you close it there. **Reconnect** no longer restarts the whole agent.
 - The Account tab names the installed extension version.
 
+### A calmer chat
+
+- **What you typed is kept.** A draft (text, files, images) survives a visit to another tab of the chat, switching between session tabs, and a restart of the agent. A closed session forgets its draft.
+- **The Chat tab tells you what is going on.** A pulsing dot means Alran is working in some session; a yellow dot means one is waiting for your answer, on every page. When a permission request or a question is below the visible part of a long conversation, a **Alran is waiting for you** button takes you there; otherwise the button is **Jump to latest**.
+- **Quieter history.** Runs of three or more reads and searches fold into one line (*Read 4 files, searched 2 times*) that opens into the calls. Edits show their `+3 −1` and have an **Open diff** button on the row. A permission request you already answered shrinks to one line, with *Show details* for the preview.
+- **A working line with a clock.** *Working… 42s*, or *Thinking*, *Writing*, *Waiting for you*.
+- **The `/` menu finds what you meant.** Commands that start with what you typed come first, the typed part is marked, the selection scrolls into view with the arrow keys, and a command that does not exist says so (Enter still sends the text, so a path such as `/usr/bin` is not swallowed).
+- **Your own messages** have *Copy* and *Use as a new message*. The copy button of an answer is reachable with the keyboard.
+- **Images and drops.** Attached images show a thumbnail; dragging files onto the composer shows a drop zone.
+- **Context meter** is a ring; at 80 % it turns yellow and a click compacts the conversation.
+- **Pages:** the long lists (Sessions, Capabilities) have a filter box (`Esc` clears it); groups show how many they hold; the arrow keys, `Home` and `End` move between rows and open or close groups; loading shows placeholders instead of a spinner; the filter does not follow you to another page.
+- **Starting points** on the welcome screen are cards with a line of explanation. The sub-agent bar has a **Show** button, and a Goal with a token budget shows a progress line.
+- **Keyboard and accessibility:** the tabs of the chat work with the arrow keys, `Home` and `End`; `prefers-reduced-motion` stops spinners and animations; high-contrast themes keep the status marks visible.
+
 ### Safer by default
 
 - A project can no longer choose what the extension runs. `alran.executablePath`, `alran.nodePath`, `alran.env`, `alran.lane`, `alran.mcpServers` and `alran.confirmFullAccess` are read from your user settings only; a value in a folder's `.vscode/settings.json` is ignored. Set them in your own settings.

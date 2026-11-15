@@ -10,7 +10,8 @@ import type {
   MentionCandidate,
   SessionMeta,
 } from '../../shared/types';
-import { composerEvents, post } from '../store';
+import { rankByQuery, splitMatch } from '../../shared/ui';
+import { composerEvents, draftKey, post, readDraft, saveDraft } from '../store';
 import { Icon } from './Transcript';
 
 interface MenuEntry {
@@ -18,7 +19,22 @@ interface MenuEntry {
   readonly label: string;
   readonly detail?: string;
   readonly icon: string;
+  /** What was typed to find this entry; the matching part of the label is marked. */
+  readonly query: string;
   apply(): void;
+}
+
+/** A label with the part that matches the typed text in bold. */
+function Highlighted({ text, query }: { readonly text: string; readonly query: string }) {
+  const parts = splitMatch(text, query);
+  if (!parts) return <>{text}</>;
+  return (
+    <>
+      {parts[0]}
+      <mark class="match">{parts[1]}</mark>
+      {parts[2]}
+    </>
+  );
 }
 
 const MAX_HISTORY = 100;
@@ -107,12 +123,14 @@ function ConfigSelect({ option, icon }: { readonly option: ConfigOptionView; rea
 }
 
 export function Composer({
+  sessionId,
   meta,
   preferences,
   activeFile,
   busy,
   disabled = false,
 }: {
+  readonly sessionId: string | undefined;
   readonly meta: SessionMeta | null;
   readonly preferences: ChatPreferences;
   readonly activeFile?: string;
@@ -120,19 +138,39 @@ export function Composer({
   /** No agent to talk to yet (CLI missing, sign-in needed, startup failed). */
   readonly disabled?: boolean;
 }) {
-  const [text, setText] = useState('');
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
-  const [includeActive, setIncludeActive] = useState(preferences.includeActiveFile);
+  const key = draftKey(sessionId);
+  // What was typed in this session before the composer was rebuilt (a page or a tab in between).
+  const saved = useMemo(() => readDraft(key), [key]);
+  const [text, setText] = useState(saved?.text ?? '');
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([...(saved?.attachments ?? [])]);
+  const [includeActive, setIncludeActive] = useState(saved?.includeActive ?? preferences.includeActiveFile);
   const [menuIndex, setMenuIndex] = useState(0);
   const [mentions, setMentions] = useState<readonly MentionCandidate[]>([]);
   const [menuDismissed, setMenuDismissed] = useState(false);
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState((saved?.text ?? '').length);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const menuList = useRef<HTMLDivElement>(null);
+  const preferenceSeen = useRef(preferences.includeActiveFile);
   const history = useRef<string[]>([]);
   const historyIndex = useRef<number | null>(null);
   const mentionRequest = useRef(0);
 
-  useEffect(() => setIncludeActive(preferences.includeActiveFile), [preferences.includeActiveFile]);
+  // A changed setting wins over what this draft remembers; the first run only restores.
+  useEffect(() => {
+    if (preferenceSeen.current === preferences.includeActiveFile) return;
+    preferenceSeen.current = preferences.includeActiveFile;
+    setIncludeActive(preferences.includeActiveFile);
+  }, [preferences.includeActiveFile]);
+
+  useEffect(() => {
+    saveDraft(key, {
+      text,
+      attachments,
+      includeActive: includeActive === preferences.includeActiveFile ? undefined : includeActive,
+    });
+  }, [key, text, attachments, includeActive, preferences.includeActiveFile]);
 
   const send = (value: string, alternate: boolean) => {
     const trimmed = value.trim();
@@ -224,14 +262,14 @@ export function Composer({
 
   const menu: readonly MenuEntry[] = useMemo(() => {
     if (slashQuery !== undefined) {
-      return commands
-        .filter((command) => command.name.toLowerCase().includes(slashQuery))
+      return rankByQuery(commands, slashQuery, (command) => command.name)
         .slice(0, 40)
         .map((command) => ({
           key: command.name,
           label: `/${command.name}${command.hint ? ` ${command.hint}` : ''}`,
           detail: command.description,
           icon: command.source === 'skill' ? 'wand' : 'symbol-event',
+          query: slashQuery,
           apply: () => applyCommand(command),
         }));
     }
@@ -241,6 +279,7 @@ export function Composer({
         label: candidate.label,
         ...(candidate.detail ? { detail: candidate.detail } : {}),
         icon: candidate.kind === 'plugin' ? 'extensions' : 'file',
+        query: mentionQuery,
         apply: () => applyMention(candidate),
       }));
     }
@@ -248,7 +287,14 @@ export function Composer({
   }, [slashQuery, mentionQuery, commands, mentions, text, cursor]);
 
   const menuOpen = menu.length > 0;
+  // A slash command that matches nothing says so; the keys still go to the text (it may be a path).
+  const noCommand = slashQuery !== undefined && slashQuery !== '' && menu.length === 0;
   const selected = Math.min(menuIndex, menu.length - 1);
+
+  // The arrow keys can move the selection below the visible part of the list.
+  useEffect(() => {
+    menuList.current?.querySelector('.selected')?.scrollIntoView({ block: 'nearest' });
+  }, [selected, menu]);
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (menuOpen) {
@@ -326,6 +372,8 @@ export function Composer({
 
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
     const transfer = event.dataTransfer;
     if (!transfer) return;
     const uris = (transfer.getData('text/uri-list') || transfer.getData('application/vnd.code.uri-list'))
@@ -365,9 +413,21 @@ export function Composer({
         : 'Ask Alran. @ for context, / for commands';
 
   return (
-    <div class="composer" onDrop={onDrop} onDragOver={(event) => event.preventDefault()}>
+    <div
+      class="composer"
+      onDrop={onDrop}
+      onDragOver={(event) => event.preventDefault()}
+      onDragEnter={() => {
+        dragDepth.current += 1;
+        setDragging(true);
+      }}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragging(false);
+      }}
+    >
       {menuOpen ? (
-        <div class="menu" role="listbox">
+        <div class="menu" role="listbox" aria-label={slashQuery !== undefined ? 'Commands' : 'Context'} ref={menuList}>
           {menu.map((entry, index) => (
             <button
               key={entry.key}
@@ -380,13 +440,24 @@ export function Composer({
               }}
             >
               <Icon name={entry.icon} />
-              <span class="menu-label">{entry.label}</span>
+              <span class="menu-label">
+                <Highlighted text={entry.label} query={entry.query} />
+              </span>
               {entry.detail ? <span class="menu-detail">{entry.detail}</span> : null}
             </button>
           ))}
         </div>
+      ) : noCommand ? (
+        <div class="menu menu-empty" role="status">
+          <Icon name="search" /> No command matches <code>/{slashQuery}</code>. Enter sends it as text.
+        </div>
       ) : null}
-      <div class="composer-box">
+      <div class={`composer-box${dragging ? ' drag-over' : ''}`}>
+        {dragging ? (
+          <div class="drop-hint" aria-hidden="true">
+            <Icon name="cloud-upload" /> Drop files or images to add them
+          </div>
+        ) : null}
         {attachments.length > 0 || (activeFile && includeActive) ? (
           <div class="chips">
             {activeFile && includeActive ? (
@@ -395,8 +466,13 @@ export function Composer({
               </button>
             ) : null}
             {attachments.map((attachment) => (
-              <span class="chip" key={attachment.id}>
-                <Icon name={attachmentIcon(attachment)} /> {attachment.label}
+              <span class={`chip${attachment.kind === 'image' ? ' chip-image' : ''}`} key={attachment.id} title={attachment.label}>
+                {attachment.kind === 'image' ? (
+                  <img class="chip-thumb" alt="" src={`data:${attachment.mimeType};base64,${attachment.data}`} />
+                ) : (
+                  <Icon name={attachmentIcon(attachment)} />
+                )}{' '}
+                {attachment.label}
                 <button
                   class="chip-remove"
                   title="Remove"
@@ -461,12 +537,25 @@ export function Composer({
             </span>
           ) : null}
           {usagePercent !== undefined && usage ? (
-            <span
-              class={`context-meter${usagePercent >= 80 ? ' high' : ''}`}
-              title={`${usage.used.toLocaleString()} / ${usage.size.toLocaleString()} context tokens${usage.costUsd !== undefined ? ` · $${usage.costUsd.toFixed(4)}` : ''}`}
-            >
-              {usagePercent}%
-            </span>
+            usagePercent >= 80 ? (
+              <button
+                class={`context-meter high${usagePercent >= 95 ? ' full' : ''}`}
+                style={{ '--usage': `${String(Math.min(100, usagePercent))}%` }}
+                title={`${usage.used.toLocaleString()} / ${usage.size.toLocaleString()} context tokens. The conversation is nearly full: click to compact it.`}
+                aria-label={`Context ${String(usagePercent)} percent full. Compact the conversation`}
+                onClick={() => post({ type: 'command', command: 'alran.compact' })}
+              >
+                <span class="context-ring" aria-hidden="true" /> {usagePercent}%
+              </button>
+            ) : (
+              <span
+                class="context-meter"
+                style={{ '--usage': `${String(Math.min(100, usagePercent))}%` }}
+                title={`${usage.used.toLocaleString()} / ${usage.size.toLocaleString()} context tokens${usage.costUsd !== undefined ? ` · $${usage.costUsd.toFixed(4)}` : ''}`}
+              >
+                <span class="context-ring" aria-hidden="true" /> {usagePercent}%
+              </span>
+            )
           ) : null}
           {busy ? (
             <button class="icon-button stop" title="Stop (Esc)" aria-label="Stop" onClick={() => post({ type: 'cancel' })}>

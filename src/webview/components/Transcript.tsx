@@ -14,7 +14,15 @@ import type {
   TranscriptItem,
   UserItem,
 } from '../../shared/types';
-import { post } from '../store';
+import {
+  describeExploration,
+  formatElapsed,
+  groupExploration,
+  patchStat,
+  type ExplorationGroup,
+  type TranscriptEntryModel,
+} from '../../shared/ui';
+import { composerEvents, post } from '../store';
 import { PatchView, TextDiffView } from './Diff';
 import { Markdown } from './Markdown';
 
@@ -22,9 +30,29 @@ export function Icon({ name, spin }: { readonly name: string; readonly spin?: bo
   return <i class={`codicon codicon-${name}${spin ? ' codicon-modifier-spin' : ''}`} aria-hidden="true" />;
 }
 
+function userText(item: UserItem): string {
+  return item.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
+}
+
 function UserMessage({ item }: { readonly item: UserItem }) {
+  const text = userText(item);
   return (
     <div class={`message user${item.steered ? ' steered' : ''}`}>
+      {text ? (
+        <div class="message-actions">
+          <button class="icon-button" title="Copy" aria-label="Copy this message" onClick={() => post({ type: 'copy', text })}>
+            <Icon name="copy" />
+          </button>
+          <button
+            class="icon-button"
+            title="Use as a new message"
+            aria-label="Use this message as a new message"
+            onClick={() => composerEvents.setDraft?.(text)}
+          >
+            <Icon name="edit" />
+          </button>
+        </div>
+      ) : null}
       {item.steered ? <div class="message-tag">Steered into the running turn</div> : null}
       {item.content.map((part, index) => {
         if (part.type === 'text') return <div key={index} class="user-text">{part.text}</div>;
@@ -55,7 +83,7 @@ function AssistantMessage({
       {plain ? <pre class="tool-pre plain-output">{text}</pre> : <Markdown text={text} />}
       {streaming ? <span class="cursor" /> : (
         <div class="message-actions">
-          <button class="icon-button" title="Copy as Markdown" onClick={() => post({ type: 'copy', text })}>
+          <button class="icon-button" title="Copy as Markdown" aria-label="Copy as Markdown" onClick={() => post({ type: 'copy', text })}>
             <Icon name="copy" />
           </button>
         </div>
@@ -106,25 +134,43 @@ function inputPreview(item: ToolItem): string | undefined {
 function ToolRow({ item, children }: { readonly item: ToolItem; readonly children: readonly ToolItem[] }) {
   const [open, setOpen] = useState(false);
   const preview = inputPreview(item);
+  const stat = useMemo(() => patchStat(item.patch), [item.patch]);
   const failedChildren = children.filter((child) => child.status === 'failed').length;
   const hasDetail =
     preview !== undefined || !!item.output || !!item.patch || item.blocks.length > 0 || children.length > 0;
   return (
     <div class={`tool status-${item.status}`}>
-      <button
-        class="row-button tool-header"
-        onClick={() => hasDetail && setOpen(!open)}
-        aria-expanded={open}
-      >
-        <Icon name={TOOL_ICONS[item.toolKind] ?? 'tools'} />
-        <span class="tool-title">{describeTool(item)}</span>
-        {children.length > 0 ? (
-          <span class="tool-count">
-            {children.length} calls{failedChildren ? `, ${String(failedChildren)} failed` : ''}
-          </span>
+      <div class="tool-line">
+        <button
+          class="row-button tool-header"
+          onClick={() => hasDetail && setOpen(!open)}
+          aria-expanded={open}
+        >
+          <Icon name={TOOL_ICONS[item.toolKind] ?? 'tools'} />
+          <span class="tool-title">{describeTool(item)}</span>
+          {stat ? (
+            <span class="tool-stat" title={`${String(stat.added)} lines added, ${String(stat.removed)} removed`}>
+              <span class="stat-add">+{stat.added}</span> <span class="stat-remove">−{stat.removed}</span>
+            </span>
+          ) : null}
+          {children.length > 0 ? (
+            <span class="tool-count">
+              {children.length} calls{failedChildren ? `, ${String(failedChildren)} failed` : ''}
+            </span>
+          ) : null}
+          <span class="tool-status">{statusIcon(item.status)}</span>
+        </button>
+        {item.toolKind === 'edit' && item.locations.length > 0 ? (
+          <button
+            class="icon-button tool-quick"
+            title="Open the diff"
+            aria-label={`Open the diff of ${describeTool(item)}`}
+            onClick={() => post({ type: 'openToolDiff', toolId: item.id })}
+          >
+            <Icon name="diff" />
+          </button>
         ) : null}
-        <span class="tool-status">{statusIcon(item.status)}</span>
-      </button>
+      </div>
       {open ? (
         <div class="tool-body">
           {preview !== undefined ? <pre class="tool-pre">{preview}</pre> : null}
@@ -155,6 +201,32 @@ function ToolRow({ item, children }: { readonly item: ToolItem; readonly childre
   );
 }
 
+/** A long run of reads and searches, folded into one line that opens into the calls. */
+function Exploration({ group, children }: { readonly group: ExplorationGroup; readonly children: ReadonlyMap<string, readonly ToolItem[]> }) {
+  const [open, setOpen] = useState(false);
+  const running = group.tools.some((tool) => tool.status === 'in_progress' || tool.status === 'pending');
+  const failed = group.tools.filter((tool) => tool.status === 'failed').length;
+  return (
+    <div class={`tool exploration${failed ? ' status-failed' : ''}`}>
+      <div class="tool-line">
+        <button class="row-button tool-header" onClick={() => setOpen(!open)} aria-expanded={open}>
+          <Icon name={open ? 'chevron-down' : 'chevron-right'} />
+          <span class="tool-title">{describeExploration(group.tools)}</span>
+          {failed ? <span class="tool-count">{failed} failed</span> : null}
+          <span class="tool-status">{running ? <Icon name="loading" spin /> : failed ? <Icon name="error" /> : <Icon name="check" />}</span>
+        </button>
+      </div>
+      {open ? (
+        <div class="tool-body">
+          {group.tools.map((tool) => (
+            <ToolRow key={tool.id} item={tool} children={children.get(tool.id) ?? NO_CHILDREN} />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function PermissionPreview({ item }: { readonly item: PermissionItem }) {
   if (!isRecord(item.input)) return null;
   const { command, old_string: oldText, new_string: newText, content } = item.input;
@@ -169,21 +241,35 @@ function PermissionPreview({ item }: { readonly item: PermissionItem }) {
 }
 
 function PermissionCard({ item }: { readonly item: PermissionItem }) {
+  // What was decided is a line in the history; the preview comes back on request.
+  const [showPreview, setShowPreview] = useState(false);
   const buttonClass = (kind: string) =>
     kind.startsWith('allow') ? (kind === 'allow_once' ? 'button primary' : 'button') : 'button danger';
+  const pending = !item.resolution;
   return (
-    <div class={`card permission${item.resolution ? ' resolved' : ''}`}>
+    <div class={`card permission${item.resolution ? ' resolved' : ''}`} role={pending ? 'alert' : undefined}>
       <div class="card-title">
-        <Icon name="shield" /> {describeTool({ name: item.toolName ?? item.title, title: item.title, input: item.input, locations: item.locations })}
+        <Icon name={pending ? 'shield' : 'pass'} />
+        <span class="card-title-text">
+          {describeTool({ name: item.toolName ?? item.title, title: item.title, input: item.input, locations: item.locations })}
+        </span>
       </div>
-      {item.locations.map((path) => (
-        <button key={path} class="link-button card-path" onClick={() => post({ type: 'openFile', path })}>
-          {path}
-        </button>
-      ))}
-      <PermissionPreview item={item} />
+      {pending ? <div class="card-subtitle">Alran is waiting for your decision.</div> : null}
+      {pending || showPreview
+        ? item.locations.map((path) => (
+            <button key={path} class="link-button card-path" onClick={() => post({ type: 'openFile', path })}>
+              {path}
+            </button>
+          ))
+        : null}
+      {pending || showPreview ? <PermissionPreview item={item} /> : null}
       {item.resolution ? (
-        <div class="card-resolution">{item.resolution}</div>
+        <div class="card-resolution">
+          {item.resolution}
+          <button class="link-button" onClick={() => setShowPreview(!showPreview)} aria-expanded={showPreview}>
+            {showPreview ? 'Hide details' : 'Show details'}
+          </button>
+        </div>
       ) : (
         <div class="card-actions">
           {item.options.map((option) => (
@@ -427,13 +513,17 @@ function Notice({ item }: { readonly item: NoticeItem }) {
 const TranscriptEntry = memo(function TranscriptEntry({
   item,
   childTools,
+  childrenOf,
   showThinking,
 }: {
-  readonly item: TranscriptItem;
+  readonly item: TranscriptEntryModel;
   readonly childTools: readonly ToolItem[];
+  readonly childrenOf: ReadonlyMap<string, readonly ToolItem[]>;
   readonly showThinking: boolean;
 }) {
   switch (item.kind) {
+    case 'exploration':
+      return <Exploration group={item} children={childrenOf} />;
     case 'user':
       return <UserMessage item={item} />;
     case 'assistant':
@@ -455,6 +545,44 @@ const TranscriptEntry = memo(function TranscriptEntry({
 
 const NO_CHILDREN: readonly ToolItem[] = [];
 
+/** What Alran is doing right now, in a few words. */
+function currentActivity(items: readonly TranscriptItem[]): string {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (!item) continue;
+    // A running tool names itself in its own row; the line below only adds the time.
+    if (item.kind === 'tool' && (item.status === 'in_progress' || item.status === 'pending')) return 'Working';
+    if (item.kind === 'permission' || item.kind === 'question') {
+      if (!item.resolution) return 'Waiting for you';
+    } else if (item.kind === 'thought' && item.streaming) return 'Thinking';
+    else if (item.kind === 'assistant' && item.streaming) return 'Writing';
+    else if (item.kind === 'user') break;
+  }
+  return 'Working';
+}
+
+function Working({ items }: { readonly items: readonly TranscriptItem[] }) {
+  const started = useRef(Date.now());
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  // From the question this run answers when the clocks agree; otherwise from when it was first seen.
+  const lastQuestion = [...items].reverse().find((item) => item.kind === 'user' && !item.steered);
+  const asked = lastQuestion?.timestamp;
+  const since = asked !== undefined && now - asked >= 0 && now - asked < 6 * 3_600_000 ? asked : started.current;
+  return (
+    <div class="working" role="status">
+      <Icon name="loading" spin />
+      <span class="working-activity">{currentActivity(items)}…</span>
+      <span class="working-time">{formatElapsed(now - since)}</span>
+    </div>
+  );
+}
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+
 export function Transcript({
   items,
   showThinking,
@@ -466,8 +594,9 @@ export function Transcript({
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stuckToBottom = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
 
-  const { topLevel, children } = useMemo(() => {
+  const { entries, children } = useMemo(() => {
     const byParent = new Map<string, ToolItem[]>();
     for (const item of items) {
       if (item.kind === 'tool' && item.parentId) {
@@ -477,11 +606,9 @@ export function Transcript({
       }
     }
     const ids = new Set(items.map((item) => item.id));
-    return {
-      topLevel: items.filter((item) => !(item.kind === 'tool' && item.parentId && ids.has(item.parentId))),
-      children: byParent,
-    };
-  }, [items]);
+    const topLevel = items.filter((item) => !(item.kind === 'tool' && item.parentId && ids.has(item.parentId)));
+    return { entries: groupExploration(topLevel, { skipThoughts: !showThinking }), children: byParent };
+  }, [items, showThinking]);
 
   useEffect(() => {
     const element = scroller.current;
@@ -490,25 +617,39 @@ export function Transcript({
 
   const onScroll = () => {
     const element = scroller.current;
-    if (element) {
-      stuckToBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
-    }
+    if (!element) return;
+    const stuck = element.scrollHeight - element.scrollTop - element.clientHeight < 40;
+    stuckToBottom.current = stuck;
+    setAtBottom((previous) => (previous === stuck ? previous : stuck));
   };
 
+  const jumpToLatest = () => {
+    const element = scroller.current;
+    if (!element) return;
+    stuckToBottom.current = true;
+    element.scrollTo({ top: element.scrollHeight, behavior: window.matchMedia(REDUCED_MOTION).matches ? 'auto' : 'smooth' });
+  };
+
+  const waiting = items.some((item) => (item.kind === 'permission' || item.kind === 'question') && !item.resolution);
+
   return (
-    <div class="transcript" ref={scroller} onScroll={onScroll} role="log" aria-live="polite">
-      {topLevel.map((item) => (
-        <TranscriptEntry
-          key={item.id}
-          item={item}
-          childTools={children.get(item.id) ?? NO_CHILDREN}
-          showThinking={showThinking}
-        />
-      ))}
-      {busy ? (
-        <div class="working">
-          <Icon name="loading" spin /> Working…
-        </div>
+    <div class="transcript-wrap">
+      <div class="transcript" ref={scroller} onScroll={onScroll} role="log" aria-live="polite" aria-label="Conversation">
+        {entries.map((item) => (
+          <TranscriptEntry
+            key={item.id}
+            item={item}
+            childTools={item.kind === 'tool' ? (children.get(item.id) ?? NO_CHILDREN) : NO_CHILDREN}
+            childrenOf={children}
+            showThinking={showThinking}
+          />
+        ))}
+        {busy ? <Working items={items} /> : null}
+      </div>
+      {!atBottom ? (
+        <button class={`jump-latest${waiting ? ' waiting' : ''}`} onClick={jumpToLatest}>
+          <Icon name="arrow-down" /> {waiting ? 'Alran is waiting for you' : 'Jump to latest'}
+        </button>
       ) : null}
     </div>
   );

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { describeStartupFailure } from '../shared/errors';
 import type { AccountView, ConnectionState, GoalView, SessionMeta, TabView } from '../shared/types';
 import { Composer } from './components/Composer';
-import { PageNav, PagePanel } from './components/Pages';
+import { PageNav, PagePanel, type ChatActivity } from './components/Pages';
 import { Icon, Transcript } from './components/Transcript';
 import { composerEvents, openPage, post, useChatState } from './store';
 
@@ -132,7 +132,7 @@ function GoalBar({ goal }: { readonly goal: GoalView }) {
       : undefined;
   const paused = goal.status === 'paused' || goal.status === 'blocked';
   return (
-    <div class={`goal-bar status-${goal.status}`}>
+    <div class={`goal-bar status-${goal.status}`} style={percent !== undefined ? { '--progress': `${String(percent)}%` } : undefined}>
       <Icon name="target" />
       <span class="goal-objective" title={goal.objective}>{goal.objective}</span>
       <span class="goal-status">{goal.status.replace('_', ' ')}{percent !== undefined ? ` · ${String(percent)}%` : ''}</span>
@@ -161,6 +161,7 @@ function DelegationBar({ meta }: { readonly meta: SessionMeta }) {
       <Icon name="loading" spin />
       <span>{active.length} sub-agent{active.length === 1 ? '' : 's'} running</span>
       <span class="spacer" />
+      <button class="link-button" onClick={() => openPage('agents')}>Show</button>
       <button class="link-button" onClick={() => post({ type: 'stopDelegation' })}>Stop all</button>
     </div>
   );
@@ -322,10 +323,37 @@ function AccountLine({ account }: { readonly account: AccountView }) {
   return null;
 }
 
-const SUGGESTIONS: ReadonlyArray<readonly [string, string, string]> = [
-  ['Explain this project', 'book', 'Give me a short tour of this project: what it does, how it is structured, and where to start reading.'],
-  ['Find and fix a bug', 'debug', 'Run the tests, find a failing or fragile spot, fix it and show me the change.'],
-  ['Write tests', 'beaker', 'Write tests for the current file and make sure they pass.'],
+interface Starter {
+  readonly label: string;
+  readonly detail: string;
+  readonly icon: string;
+  /** A prompt for the composer, or a command to run. */
+  readonly prompt?: string;
+  readonly command?: string;
+}
+
+const STARTERS: readonly Starter[] = [
+  { label: 'Review my changes', detail: 'Look over what is uncommitted', icon: 'git-pull-request', command: 'alran.reviewChanges' },
+  {
+    label: 'Explain this project',
+    detail: 'A short tour of the code',
+    icon: 'book',
+    prompt: 'Give me a short tour of this project: what it does, how it is structured, and where to start reading.',
+  },
+  {
+    label: 'Find and fix a bug',
+    detail: 'Run the tests, fix what fails',
+    icon: 'debug',
+    prompt: 'Run the tests, find a failing or fragile spot, fix it and show me the change.',
+  },
+  {
+    label: 'Write tests',
+    detail: 'For the file you have open',
+    icon: 'beaker',
+    prompt: 'Write tests for the current file and make sure they pass.',
+  },
+  { label: 'Generate AGENTS.md', detail: 'Teach Alran this codebase', icon: 'file-text', command: 'alran.initProject' },
+  { label: 'Resume a session', detail: 'Pick up where you left off', icon: 'history', command: 'alran.resumeSession' },
 ];
 
 function Welcome({ account }: { readonly account: AccountView }) {
@@ -334,17 +362,33 @@ function Welcome({ account }: { readonly account: AccountView }) {
       <div class="welcome-mark" aria-hidden="true"><Icon name="sparkle" /></div>
       <h2>What should Alran build?</h2>
       <AccountLine account={account} />
-      <div class="welcome-actions">
-        <button class="button" onClick={() => post({ type: 'command', command: 'alran.reviewChanges' })}><Icon name="git-pull-request" /> Review my changes</button>
-        {SUGGESTIONS.map(([label, icon, prompt]) => (
-          <button key={label} class="button" onClick={() => composerEvents.setDraft?.(prompt)}><Icon name={icon} /> {label}</button>
+      <div class="starters">
+        {STARTERS.map((starter) => (
+          <button
+            key={starter.label}
+            class="starter"
+            onClick={() =>
+              starter.command ? post({ type: 'command', command: starter.command }) : composerEvents.setDraft?.(starter.prompt ?? '')
+            }
+          >
+            <Icon name={starter.icon} />
+            <span class="starter-text">
+              <span class="starter-label">{starter.label}</span>
+              <span class="starter-detail">{starter.detail}</span>
+            </span>
+          </button>
         ))}
-        <button class="button" onClick={() => post({ type: 'command', command: 'alran.initProject' })}><Icon name="file-text" /> Generate AGENTS.md</button>
-        <button class="button" onClick={() => post({ type: 'command', command: 'alran.resumeSession' })}><Icon name="history" /> Resume a session</button>
       </div>
       <p class="hint"><kbd>@</kbd> adds files and Plugins · <kbd>/</kbd> opens commands · <kbd>Shift+Tab</kbd> toggles Plan Mode</p>
     </div>
   );
+}
+
+/** Whether Alran is working in any session, or waits for an answer in one: the Chat tab shows it on every page. */
+function chatActivity(tabs: readonly TabView[]): ChatActivity {
+  if (tabs.some((tab) => tab.status === 'awaiting-input')) return 'waiting';
+  if (tabs.some((tab) => tab.status === 'running' || tab.status === 'background' || tab.status === 'cancelling')) return 'working';
+  return 'idle';
 }
 
 export function App() {
@@ -353,6 +397,7 @@ export function App() {
   const status = meta?.status;
   const busy = status === 'running' || status === 'awaiting-input' || status === 'cancelling';
   const hasConversation = items.length > 0;
+  const activity = chatActivity(tabs);
   // A conversation stays readable when the agent needs a sign-in; the banner asks for it.
   const blocked =
     connection.state === 'missing-binary' ||
@@ -363,14 +408,14 @@ export function App() {
     // The pages next to the chat. The composer is not shown: nothing here is a message.
     return (
       <div class="app">
-        <PageNav page={page} badges={badges} onOpen={openPage} />
-        <PagePanel page={page} view={panel?.page === page ? panel : undefined} />
+        <PageNav page={page} badges={badges} activity={activity} onOpen={openPage} />
+        <PagePanel key={page} page={page} view={panel?.page === page ? panel : undefined} />
       </div>
     );
   }
   return (
     <div class="app">
-      <PageNav page={page} badges={badges} onOpen={openPage} />
+      <PageNav page={page} badges={badges} activity={activity} onOpen={openPage} />
       <Header tabs={tabs} {...(activeId ? { activeId } : {})} surface={surface} />
       {meta?.goal ? <GoalBar goal={meta.goal} /> : null}
       {meta ? <DelegationBar meta={meta} /> : null}
@@ -409,6 +454,7 @@ export function App() {
       {meta ? <QueueList meta={meta} /> : null}
       <Composer
         key={activeId ?? 'none'}
+        sessionId={activeId}
         meta={meta}
         preferences={preferences}
         {...(activeFile ? { activeFile } : {})}
