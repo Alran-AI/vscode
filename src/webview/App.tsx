@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { describeStartupFailure } from '../shared/errors';
 import type { AccountView, ConnectionState, GoalView, SessionMeta, TabView } from '../shared/types';
 import { Composer } from './components/Composer';
+import { AlranMark } from './components/Mark';
 import { PageNav, PagePanel, type ChatActivity } from './components/Pages';
 import { Icon, Transcript } from './components/Transcript';
 import { composerEvents, openPage, post, useChatState } from './store';
@@ -247,7 +248,8 @@ function ConnectionCard({ connection }: { readonly connection: ConnectionState }
   if (connection.state === 'connecting') {
     return (
       <div class="empty" aria-busy="true">
-        <Icon name="loading" spin /> Starting Alran Code…
+        <AlranMark live size={36} />
+        <span>Starting Alran Code…</span>
       </div>
     );
   }
@@ -267,7 +269,7 @@ function ConnectionCard({ connection }: { readonly connection: ConnectionState }
   if (connection.state === 'auth-required') {
     return (
       <div class="empty card-center">
-        <Icon name="sparkle" />
+        <AlranMark size={44} />
         <h3>Connect Alran Code</h3>
         <p>Sign in with your Ottili account to use Ottili Werk and Claude models. New accounts get welcome credit for Werk.</p>
         <SignInOptions />
@@ -382,7 +384,7 @@ const STARTERS: readonly Starter[] = [
 function Welcome({ account }: { readonly account: AccountView }) {
   return (
     <div class="empty welcome">
-      <div class="welcome-mark" aria-hidden="true"><Icon name="sparkle" /></div>
+      <div class="welcome-mark"><AlranMark size={68} /></div>
       <h2>What should Alran build?</h2>
       <AccountLine account={account} />
       <div class="starters">

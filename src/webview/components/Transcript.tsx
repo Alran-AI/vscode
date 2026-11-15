@@ -24,6 +24,7 @@ import {
 } from '../../shared/ui';
 import { composerEvents, post } from '../store';
 import { DiffStatBadge, PatchView, TextDiffView } from './Diff';
+import { AlranMark } from './Mark';
 import { Markdown } from './Markdown';
 
 export function Icon({ name, spin }: { readonly name: string; readonly spin?: boolean }) {
@@ -185,7 +186,7 @@ function ToolRow({ item, children }: { readonly item: ToolItem; readonly childre
   const hasDetail =
     preview !== undefined || !!item.output || !!item.patch || item.blocks.length > 0 || children.length > 0;
   return (
-    <div class={`tool status-${item.status}`}>
+    <div class={`tool status-${item.status}${open ? ' open' : ''}`}>
       <div class="tool-line">
         <button
           class="row-button tool-header"
@@ -250,7 +251,7 @@ function Exploration({ group, children }: { readonly group: ExplorationGroup; re
   const running = group.tools.some((tool) => tool.status === 'in_progress' || tool.status === 'pending');
   const failed = group.tools.filter((tool) => tool.status === 'failed').length;
   return (
-    <div class={`tool exploration${failed ? ' status-failed' : ''}`}>
+    <div class={`tool exploration${failed ? ' status-failed' : ''}${open ? ' open' : ''}`}>
       <div class="tool-line">
         <button class="row-button tool-header" onClick={() => setOpen(!open)} aria-expanded={open}>
           <Icon name={open ? 'chevron-down' : 'chevron-right'} />
@@ -617,7 +618,7 @@ function Working({ items }: { readonly items: readonly TranscriptItem[] }) {
   const since = asked !== undefined && now - asked >= 0 && now - asked < 6 * 3_600_000 ? asked : started.current;
   return (
     <div class="working" role="status">
-      <Icon name="loading" spin />
+      <AlranMark live size={20} />
       <span class="working-activity">{currentActivity(items)}…</span>
       <span class="working-time">{formatElapsed(now - since)}</span>
     </div>

@@ -1,17 +1,52 @@
 :root {
-  --radius: 6px;
+  --radius: 7px;
   --gap: 8px;
   --border: var(--vscode-panel-border, rgba(128, 128, 128, 0.3));
   --subtle: var(--vscode-descriptionForeground);
   --surface: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.08));
   --hover: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.12));
   --mono: var(--vscode-editor-font-family, monospace);
-  --accent: var(--vscode-focusBorder);
+  --focus: var(--vscode-focusBorder);
+  /* Readouts (time, rates, counts, line changes) are set in the editor's mono face with tabular figures. */
+  --readout: 11px;
   --success: var(--vscode-testing-iconPassed, #3fb950);
   --error: var(--vscode-errorForeground, #f14c4c);
   --warning: var(--vscode-editorWarning-foreground, #cca700);
   --diff-add: var(--vscode-diffEditor-insertedLineBackground, rgba(46, 160, 67, 0.2));
   --diff-remove: var(--vscode-diffEditor-removedLineBackground, rgba(248, 81, 73, 0.2));
+}
+
+
+/*
+ * The ribbon. Alran's mark is two brushed-steel ribbons on midnight ink; the flat version is graphite.
+ * The interface takes its one colour from it: silver on a dark theme, graphite on a light one.
+ * Surfaces, warnings and errors stay the editor's own, so a theme still decides how the rest looks.
+ */
+body {
+  --ribbon: #d5dbe4;
+  --ribbon-hover: #f2f5f9;
+  --on-ribbon: #0b1020;
+  --steel-lo: #6c7788;
+  --steel-hi: #eef2f7;
+  --accent: var(--ribbon);
+}
+
+body.vscode-light {
+  --ribbon: #29292d;
+  --ribbon-hover: #3f4046;
+  --on-ribbon: #ffffff;
+  --steel-lo: #2a2d33;
+  --steel-hi: #8d97a7;
+}
+
+/* High-contrast themes decide their own colours; the ribbon follows their button colour. */
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+  --ribbon: var(--vscode-button-background, #ffffff);
+  --ribbon-hover: var(--vscode-button-hoverBackground, #ffffff);
+  --on-ribbon: var(--vscode-button-foreground, #000000);
+  --steel-lo: var(--vscode-foreground);
+  --steel-hi: var(--vscode-foreground);
 }
 
 * {
@@ -55,7 +90,7 @@ button:disabled {
 }
 
 :focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--focus);
   outline-offset: -1px;
 }
 
@@ -181,12 +216,12 @@ button:disabled {
 }
 
 .icon-button.send {
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
+  color: var(--on-ribbon);
+  background: var(--ribbon);
 }
 
 .icon-button.send:hover:not(:disabled) {
-  background: var(--vscode-button-hoverBackground);
+  background: var(--ribbon-hover);
 }
 
 .icon-button.stop {
@@ -275,13 +310,13 @@ button:disabled {
 }
 
 .jump-latest.waiting {
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
+  color: var(--on-ribbon);
+  background: var(--ribbon);
   border-color: transparent;
 }
 
 .jump-latest.waiting:hover {
-  background: var(--vscode-button-hoverBackground);
+  background: var(--ribbon-hover);
 }
 
 .transcript {
@@ -778,7 +813,7 @@ button:disabled {
 }
 
 .card.question:not(.resolved) {
-  border-color: var(--accent);
+  border-color: var(--warning);
 }
 
 .card.resolved {
@@ -834,12 +869,12 @@ button:disabled {
 }
 
 .button.primary {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background: var(--ribbon);
+  color: var(--on-ribbon);
 }
 
 .button.primary:hover:not(:disabled) {
-  background: var(--vscode-button-hoverBackground);
+  background: var(--ribbon-hover);
 }
 
 .button.danger {
@@ -1150,8 +1185,8 @@ kbd {
 }
 
 .mode-toggle.active {
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
+  color: var(--on-ribbon);
+  background: var(--ribbon);
 }
 
 .pending-dot {
@@ -1838,7 +1873,7 @@ button.account-line:hover {
 .question-option input {
   margin: 2px 0 0;
   flex: none;
-  accent-color: var(--vscode-button-background);
+  accent-color: var(--ribbon);
 }
 
 .question-field legend {
@@ -1847,4 +1882,184 @@ button.account-line:hover {
 
 .card.question:not(.resolved) {
   border-left-width: 3px;
+}
+
+
+/* ======================================================================
+   Brand layer: the ribbon, turns instead of boxes, readouts in mono
+   ====================================================================== */
+
+/* The mark: a mask over a steel gradient. Still, it holds one highlight; live, the light travels. */
+.alran-mark {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  aspect-ratio: 973 / 784;
+  background: linear-gradient(
+    105deg,
+    var(--steel-lo) 0%,
+    var(--steel-hi) 25%,
+    var(--steel-lo) 50%,
+    var(--steel-hi) 75%,
+    var(--steel-lo) 100%
+  );
+  background-size: 200% 100%;
+  background-position: 22% 0;
+  -webkit-mask: var(--mark) center / contain no-repeat;
+  mask: var(--mark) center / contain no-repeat;
+}
+
+.alran-mark.live {
+  animation: sheen 2.6s linear infinite;
+}
+
+@keyframes sheen {
+  from {
+    background-position: 0% 0;
+  }
+  to {
+    background-position: 100% 0;
+  }
+}
+
+.welcome-mark {
+  margin-bottom: 6px;
+}
+
+/* A turn: the prompt is its heading, not a box. A hairline separates it from the turn before. */
+.message.user {
+  position: relative;
+  align-self: stretch;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 12px 0 0 14px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  font-weight: 600;
+}
+
+.message.user.steered {
+  border-style: none;
+  border-top: 1px dashed var(--border);
+}
+
+.message.user::before {
+  content: '›';
+  position: absolute;
+  left: 1px;
+  top: 11px;
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--ribbon);
+}
+
+.transcript > .message.user:first-child {
+  margin-top: 0;
+  padding-top: 2px;
+  border-top-color: transparent;
+}
+
+.transcript > .message.user:first-child::before {
+  top: 1px;
+}
+
+.message.user .message-actions {
+  top: 6px;
+  bottom: auto;
+  right: 0;
+}
+
+.message-tag {
+  font-weight: 400;
+}
+
+/* Tool calls happen one after the other: a thin thread runs through the ones that are next to each other. */
+.tool {
+  position: relative;
+}
+
+.tool + .tool {
+  margin-top: calc(var(--gap) * -0.5);
+}
+
+.tool:not(.open) + .tool::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: -7px;
+  width: 1px;
+  height: 10px;
+  background: color-mix(in srgb, var(--vscode-foreground) 28%, transparent);
+}
+
+/* Readouts: figures that change are mono with tabular digits, so they do not jitter. */
+.working-time,
+.rate-meter,
+.context-meter,
+.tool-stat,
+.tool-count,
+.page-count,
+.row-count,
+.nav-badge,
+.queue-title,
+.goal-status {
+  font-family: var(--mono);
+  font-size: var(--readout);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.nav-badge {
+  color: var(--on-ribbon);
+  background: var(--ribbon);
+}
+
+.page-count,
+.row-count {
+  color: var(--vscode-foreground);
+  background: color-mix(in srgb, var(--ribbon) 16%, transparent);
+}
+
+/* Surfaces: one softer radius for what holds things, a brushed highlight on the top edge of the composer. */
+.card,
+.failure-card,
+.starter,
+.code-block {
+  border-radius: 9px;
+}
+
+.composer-box {
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--steel-hi) 9%, transparent);
+}
+
+.composer-box:focus-within {
+  border-color: color-mix(in srgb, var(--ribbon) 75%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ribbon) 22%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--steel-hi) 9%, transparent);
+}
+
+.starter > .codicon,
+.welcome-mark .codicon {
+  color: var(--ribbon);
+}
+
+.starter-label {
+  letter-spacing: -0.005em;
+}
+
+/* One underline is enough: the page tabs carry it, the session tab only gets a fill. */
+.tab.active {
+  background: color-mix(in srgb, var(--ribbon) 13%, transparent);
+  box-shadow: none;
+}
+
+/* A send button that cannot send is quiet, not a grey block. */
+.icon-button.send:disabled {
+  color: var(--subtle);
+  background: transparent;
+  opacity: 0.55;
 }

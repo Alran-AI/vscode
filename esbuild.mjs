@@ -35,7 +35,7 @@ const webview = {
   target: 'es2022',
   jsx: 'automatic',
   jsxImportSource: 'preact',
-  loader: { '.ttf': 'copy' },
+  loader: { '.ttf': 'copy', '.svg': 'text' },
   assetNames: '[name]',
 };
 
