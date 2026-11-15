@@ -205,8 +205,10 @@ class StatusBar implements vscode.Disposable {
     this.main.show();
   }
 
-  private tooltip(connection: ConnectionState): vscode.MarkdownString {
+  private tooltip(connection: ConnectionState, meta: SessionMeta | undefined): vscode.MarkdownString {
     const lines: string[] = ['**Alran Code**'];
+    if (meta?.status === 'awaiting-input') lines.push('$(bell-dot) Alran is waiting for your answer — [Show](command:alran.openChat)');
+    else if (meta?.status === 'running' || meta?.status === 'background') lines.push('$(loading~spin) Alran is working');
     const { status, credits } = this.account.snapshot;
     if (connection.state === 'connected' && connection.version) lines.push(escapeMarkdown(`CLI ${connection.version}`));
     if (connection.state === 'auth-required') lines.push('Not signed in — [Sign in](command:alran.login)');
@@ -232,23 +234,33 @@ class StatusBar implements vscode.Disposable {
     const { manager } = this.runtime;
     const meta = manager.active?.meta;
     this.main.text = this.mainText(manager.connection, meta);
-    this.main.tooltip = this.tooltip(manager.connection);
+    this.main.tooltip = this.tooltip(manager.connection, meta);
+    // Red when the agent is gone, yellow when it waits for you: noticeable without opening the chat.
     this.main.backgroundColor =
       manager.connection.state === 'error' || manager.connection.state === 'missing-binary'
         ? new vscode.ThemeColor('statusBarItem.errorBackground')
-        : undefined;
+        : meta?.status === 'awaiting-input'
+          ? new vscode.ThemeColor('statusBarItem.warningBackground')
+          : undefined;
     const model = meta?.config.find((option) => option.id === 'model');
     const permission = meta?.config.find((option) => option.id === 'permissionMode');
     this.renderOption(this.model, '$(hubot)', model);
     this.renderOption(this.permission, '$(shield)', permission);
     if (permission?.currentValue === 'bypassPermissions') {
       this.permission.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      this.permission.tooltip = 'Full Access: Alran runs commands and writes files without asking. Click to change.';
     } else {
       this.permission.backgroundColor = undefined;
     }
     if (meta?.usage && meta.usage.size > 0) {
-      this.context.text = `${String(Math.round((meta.usage.used / meta.usage.size) * 100))}%`;
-      this.context.tooltip = `${meta.usage.used.toLocaleString()} / ${meta.usage.size.toLocaleString()} context tokens`;
+      const percent = Math.round((meta.usage.used / meta.usage.size) * 100);
+      this.context.text = `${String(percent)}%`;
+      const counts = `${meta.usage.used.toLocaleString()} / ${meta.usage.size.toLocaleString()} context tokens`;
+      this.context.tooltip =
+        percent >= 80
+          ? `${counts}. The conversation is nearly full: run /compact to make room. Click for details.`
+          : `${counts}. Click for details.`;
+      this.context.backgroundColor = percent >= 80 ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
       this.context.show();
     } else {
       this.context.hide();
@@ -266,7 +278,7 @@ class StatusBar implements vscode.Disposable {
       return;
     }
     item.text = `${icon} ${current.name}`;
-    item.tooltip = option.description ?? option.name;
+    item.tooltip = `${option.name}: ${current.name}. ${option.description ? `${option.description} ` : ''}Click to change.`;
     item.show();
   }
 
@@ -275,7 +287,7 @@ class StatusBar implements vscode.Disposable {
     if (connection.state === 'auth-required') return '$(account) Alran: Sign in';
     if (connection.state === 'missing-binary' || connection.state === 'error') return '$(warning) Alran';
     if (meta?.status === 'running' || meta?.status === 'background') return '$(loading~spin) Alran';
-    if (meta?.status === 'awaiting-input') return '$(bell-dot) Alran';
+    if (meta?.status === 'awaiting-input') return '$(bell-dot) Alran: waiting for you';
     return '$(sparkle) Alran';
   }
 
