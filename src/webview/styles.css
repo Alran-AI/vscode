@@ -1806,3 +1806,15 @@ button.account-line:hover {
   color: var(--error);
   opacity: 0.85;
 }
+
+/* ---- More actions menu ---- */
+.dropdown {
+  max-height: calc(100vh - 44px);
+  overflow-y: auto;
+}
+
+.dropdown .menu-item:focus-visible {
+  outline: none;
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}

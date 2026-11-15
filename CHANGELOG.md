@@ -28,7 +28,7 @@ The first public release. Needs the Alran CLI 0.9.0 or newer.
 - **Context meter** is a ring; at 80 % it turns yellow and a click compacts the conversation.
 - **Pages:** the long lists (Sessions, Capabilities) have a filter box (`Esc` clears it); groups show how many they hold; the arrow keys, `Home` and `End` move between rows and open or close groups; loading shows placeholders instead of a spinner; the filter does not follow you to another page.
 - **Starting points** on the welcome screen are cards with a line of explanation. The sub-agent bar has a **Show** button, and a Goal with a token budget shows a progress line.
-- **Keyboard and accessibility:** the tabs of the chat work with the arrow keys, `Home` and `End`; `prefers-reduced-motion` stops spinners and animations; high-contrast themes keep the status marks visible.
+- **Keyboard and accessibility:** the tabs of the chat and the *More actions* menu work with the arrow keys, `Home`, `End` and `Esc` (the menu scrolls in a short window); a draft or file sent from the editor while another tab is open now brings the chat forward instead of getting lost; `prefers-reduced-motion` stops spinners and animations; high-contrast themes keep the status marks visible.
 
 ### Safer by default
 

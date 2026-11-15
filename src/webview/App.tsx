@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 import { describeStartupFailure } from '../shared/errors';
 import type { AccountView, ConnectionState, GoalView, SessionMeta, TabView } from '../shared/types';
@@ -54,6 +54,29 @@ function Header({
   readonly surface: 'sidebar' | 'panel';
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  // Opened from the keyboard or the mouse, the menu takes focus so the arrow keys work at once.
+  useEffect(() => {
+    if (menuOpen) menu.current?.querySelector<HTMLElement>('.menu-item')?.focus();
+  }, [menuOpen]);
+  const onMenuKeys = (event: KeyboardEvent) => {
+    const items = [...(menu.current?.querySelectorAll<HTMLElement>('.menu-item') ?? [])];
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    const move = (position: number) => {
+      event.preventDefault();
+      items[(position + items.length) % items.length]?.focus();
+    };
+    if (event.key === 'ArrowDown') move(index + 1);
+    else if (event.key === 'ArrowUp') move(index - 1);
+    else if (event.key === 'Home') move(0);
+    else if (event.key === 'End') move(items.length - 1);
+    else if (event.key === 'Escape') {
+      event.preventDefault();
+      setMenuOpen(false);
+      trigger.current?.focus();
+    } else if (event.key === 'Tab') setMenuOpen(false);
+  };
   useEffect(() => {
     if (!menuOpen) return;
     const close = (event: KeyboardEvent | MouseEvent) => {
@@ -95,11 +118,11 @@ function Header({
         </>
       ) : null}
       <div class="menu-anchor">
-        <button class="icon-button" title="More actions" aria-label="More actions" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
+        <button ref={trigger} class="icon-button" title="More actions" aria-label="More actions" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
           <Icon name="ellipsis" />
         </button>
         {menuOpen ? (
-          <div class="dropdown" role="menu">
+          <div class="dropdown" role="menu" ref={menu} onKeyDown={onMenuKeys}>
             {MENU_ACTIONS.map(([label, icon, command]) =>
               label === '-' ? (
                 <div key={command} class="menu-separator" role="separator" />
