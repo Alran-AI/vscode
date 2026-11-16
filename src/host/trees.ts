@@ -573,7 +573,7 @@ export class AccountTree extends RefreshableTree<AccountNode> {
               id: `account.month.${row.model}`,
               label: row.model,
               description: `${formatMicroUsd(row.cost_microcents)} · ${String(row.requests)} request${row.requests === 1 ? '' : 's'}`,
-              tooltip: `${String((row.input_tokens ?? 0) + (row.output_tokens ?? 0))} tokens${row.service_fee_microcents ? `\nService fee ${formatMicroUsd(row.service_fee_microcents)}` : ''}`,
+              tooltip: `${String((row.input_tokens ?? 0) + (row.output_tokens ?? 0))} tokens`,
               icon: 'symbol-number',
             }))
           : [{ kind: 'row' as const, id: 'account.month.none', label: 'No requests yet this month', icon: 'info' }],

@@ -56,6 +56,7 @@ export interface OttiliModel {
   readonly input: number;
   /** Micro-USD per million output tokens. */
   readonly output: number;
+  /** Service fee in basis points. Part of the CLI's payload, not shown next to a price. */
   readonly feeBps: number;
   readonly credit: string;
   readonly description: string;
@@ -69,6 +70,7 @@ export interface UsageRow {
   readonly input_tokens?: number;
   readonly output_tokens?: number;
   readonly cost_microcents: number;
+  /** Part of the CLI's payload. The terms and conditions carry the fee, the editor does not show it. */
   readonly service_fee_microcents?: number;
 }
 
@@ -84,6 +86,7 @@ export interface Credits {
     readonly from?: string;
     readonly by_model?: readonly UsageRow[];
     readonly total_cost_microcents?: number;
+    /** Part of the CLI's payload, not shown in the editor. */
     readonly total_service_fee_microcents?: number;
   };
 }
@@ -377,10 +380,9 @@ export function formatMicroUsd(micro: number | undefined): string {
   return `${value < 0 ? '-' : ''}$${abs.toFixed(digits)}`;
 }
 
-/** "$0.50 / $1.50 per 1M tokens" with the service fee when there is one. */
-export function formatModelPrice(model: Pick<OttiliModel, 'input' | 'output' | 'feeBps'>): string {
-  const fee = model.feeBps ? ` + ${String(model.feeBps / 100)} % fee` : '';
-  return `${formatMicroUsd(model.input)} / ${formatMicroUsd(model.output)} per 1M tokens${fee}`;
+/** "$0.50 / $1.50 per 1M tokens". The service fee is not part of it, as in the terminal UI. */
+export function formatModelPrice(model: Pick<OttiliModel, 'input' | 'output'>): string {
+  return `${formatMicroUsd(model.input)} / ${formatMicroUsd(model.output)} per 1M tokens`;
 }
 
 /** The model key of an ACP model config value (`m:<provider>:<model>:u`), if it is one. */

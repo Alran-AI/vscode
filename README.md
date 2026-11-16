@@ -62,15 +62,11 @@ The **Plugin Store** and the **Skill Library** are built in. Open them with **Al
 
 ## Models, credit and your account
 
-The **Account** view shows who you are signed in as, your company and project, your default model, your credit and this month's spending per model. Switch company or project, add credit and open invoices from there. The model picker shows each model's price and whether your credit covers it; the star makes a model the default for new sessions.
+The **Account** view shows who you are signed in as, your company and project, your default model, your credit and this month's spending. Switch company or project, add credit and open invoices from there.
 
-![The model picker with prices and what the credit covers](media/screenshots/models.png)
+![The Account view in the sidebar](media/screenshots/account.png)
 
-| Model | Input / output per 1M tokens | Paid with |
-| --- | --- | --- |
-| Ottili Werk 1.1 (default) | $0.50 / $1.50 | welcome or purchased credit |
-| Claude Sonnet 5.5 | $2.00 / $10.00 + 4.5 % service fee | purchased credit |
-| Claude Opus 5.5 | $4.00 / $20.00 + 4.5 % service fee | purchased credit |
+Alran runs on **Ottili Werk** (the default), on **Claude** or on **your own provider**. The model picker shows every model and what your credit covers; the star makes a model the default for new sessions. With your own provider the requests go straight to that provider, and Ottili does not meter them.
 
 ## Errors you can act on
 
