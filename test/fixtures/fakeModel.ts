@@ -55,6 +55,7 @@ export async function createFixture(): Promise<Fixture> {
   writeFileSync(path.join(workspace, 'a.txt'), 'line one\nline two\nline three\n');
   mkdirSync(path.join(workspace, 'src'));
   writeFileSync(path.join(workspace, 'src', 'date.ts'), DEMO_SOURCE);
+  writeFileSync(path.join(workspace, 'src', 'money.ts'), MONEY_FILE);
   // A small, believable project around the demo file: what the Explorer and the README shots show.
   mkdirSync(path.join(workspace, 'test'));
   writeFileSync(
@@ -64,7 +65,7 @@ export async function createFixture(): Promise<Fixture> {
   writeFileSync(path.join(workspace, 'README.md'), '# billing-api\n\nInvoices, payment runs and the dates they depend on.\n');
   writeFileSync(
     path.join(workspace, 'src', 'invoice.ts'),
-    "import { formatDate, parseDate } from './date';\n\nexport function dueDate(issued: string, days: number): string {\n  const date = parseDate(issued);\n  date.setUTCDate(date.getUTCDate() + days);\n  return formatDate(date);\n}\n",
+    "import { formatDate, parseDate } from './date';\nimport { subtotal, type Line } from './money';\n\n/** The invoice total in euros. */\nexport function total(lines: Line[]): number {\n  return subtotal(lines);\n}\n\n/** The day the invoice is due, as YYYY-MM-DD. */\nexport function dueDate(issued: string, days: number): string {\n  const date = parseDate(issued);\n  date.setUTCDate(date.getUTCDate() + days);\n  return formatDate(date);\n}\n",
   );
   writeFileSync(
     path.join(workspace, 'test', 'date.test.ts'),
@@ -237,10 +238,12 @@ async function respond(
 
   const file = (name: string) => path.join(paths.workspace, name);
   const lastUser = lastUserText([...body.messages].reverse().find((message) => message.role === 'user'));
-  if (lastUser.includes('DO_DEMO') || lastUser.includes('reject invalid dates')) {
+  if (lastUser.includes('DO_DEMO') || lastUser.includes('cent off')) {
     const toolTurns = body.messages.slice(body.messages.findLastIndex((message) => message.role === 'user')).filter((message) => message.role === 'tool').length;
     if (toolTurns === 0) {
-      callTool('edit', { file_path: file('src/date.ts'), old_string: DEMO_OLD, new_string: DEMO_NEW });
+      callTool('edit', { file_path: file('src/money.ts'), old_string: MONEY_OLD_FN, new_string: MONEY_NEW_FN });
+    } else if (toolTurns === 1) {
+      callTool('write', { path: file('test/money.test.ts'), content: MONEY_TEST });
     } else {
       await say(DEMO_REPLY, 4);
     }
@@ -312,10 +315,6 @@ function stripReminder(text: string): string {
   return text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gu, '').trim();
 }
 
-const DEMO_OLD = `export function parseDate(input: string): Date {
-  return new Date(input);
-}`;
-
 const DEMO_NEW = `const ISO_DATE = /^(\\d{4})-(\\d{2})-(\\d{2})$/;
 
 export function parseDate(input: string): Date {
@@ -331,23 +330,72 @@ export function parseDate(input: string): Date {
   return date;
 }`;
 
+/** The demo file: an invoice total that keeps the decimals of the float. */
+const MONEY_OLD_FN = `/** The sum of the lines, in euros. */
+export function subtotal(lines: Line[]): number {
+  let sum = 0;
+  for (const line of lines) {
+    sum += line.unitPrice * line.quantity;
+  }
+  return sum;
+}`;
+
+const MONEY_NEW_FN = `/** The sum of the lines, in euros, in cents. */
+export function subtotal(lines: Line[]): number {
+  let sum = 0;
+  for (const line of lines) {
+    sum += line.unitPrice * line.quantity;
+  }
+  // Rounded once, at the end: 19.99 x 3 is
+  // 59.97000000000001 before.
+  return Math.round(sum * 100) / 100;
+}`;
+
+/** The module the demo works in: long enough to look like a real file. */
+const MONEY_FILE = `export type Line = {
+  unitPrice: number;
+  quantity: number;
+};
+
+export type Discount = {
+  code: string;
+  percent: number;
+};
+
+${MONEY_OLD_FN}
+
+/** The discount on the lines, in euros. */
+export function discountOf(
+  lines: Line[],
+  discount: Discount,
+): number {
+  const percent = discount.percent / 100;
+  return subtotal(lines) * percent;
+}
+`;
+
+/** The test the agent writes for the fix. */
+const MONEY_TEST = `import { expect, it } from 'vitest';
+
+import { subtotal } from '../src/money';
+
+it('sums the lines in cents', () => {
+  expect(subtotal([{ unitPrice: 19.99, quantity: 3 }])).toBe(59.97);
+});
+`;
+
 const DEMO_SOURCE = `/** Parses the dates our API sends. */
-${DEMO_OLD}
+${DEMO_NEW}
 
 export function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 `;
 
-const DEMO_REPLY = `\`parseDate\` accepted anything \`new Date()\` could guess, so \`"2026-02-30"\` quietly became March 2. It now:
-
-- accepts only \`YYYY-MM-DD\` and throws a \`RangeError\` that names the bad input,
-- builds the date in UTC, so the result no longer depends on the machine's time zone,
-- rejects dates that do not exist, such as February 30.
+const DEMO_REPLY = `\`subtotal\` added the line prices as plain floats, so \`19.99 × 3\` came out as \`59.97000000000001\` and the invoice total carried the extra digits. It rounds once now, at the end, to cents:
 
 \`\`\`ts
-parseDate('2026-11-13'); // 2026-11-13T00:00:00.000Z
-parseDate('2026-02-30'); // RangeError: No such date: 2026-02-30
+return Math.round(sum * 100) / 100;
 \`\`\`
 
-Run the tests with \`npm test\` to confirm; the change is in the **Changes** view if you want to review or revert it.`;
+The new \`test/money.test.ts\` covers it. Run \`npm test\` to confirm; the change is in the **Changes** view if you want to review or revert it.`;

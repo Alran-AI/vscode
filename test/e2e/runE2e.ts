@@ -37,24 +37,33 @@ async function main(): Promise<void> {
     JSON.stringify({
       'alran.executablePath': process.env.ALRAN_E2E_NO_CLI ? path.join(fixture.workspace, 'missing', 'alran') : fixture.cliPath,
       // A larger UI, so the README shots stay readable.
-      ...(marketing ? { 'window.zoomLevel': 1, 'telemetry.telemetryLevel': 'off' } : {}),
+      ...(marketing
+        ? {
+            'window.zoomLevel': 1,
+            'telemetry.telemetryLevel': 'off',
+            // The 2026 Light theme of the current VS Code, not the dark one.
+            'workbench.colorTheme': 'Light 2026',
+          }
+        : {}),
     }),
   );
   try {
+    const launchArgs = [
+      fixture.workspace,
+      '--no-sandbox',
+      '--disable-gpu',
+      '--disable-workspace-trust',
+      // The shots need the built-in extensions: the theme lives in one of them.
+      ...(marketing ? [] : ['--disable-extensions']),
+      '--skip-welcome',
+      '--skip-release-notes',
+      `--user-data-dir=${userData}`,
+    ];
     await runTests({
       version: process.env.ALRAN_TEST_VSCODE ?? 'stable',
       extensionDevelopmentPath: process.env.ALRAN_E2E_EXTENSION_PATH ?? root,
       extensionTestsPath: path.join(root, 'dist-test', 'suite', 'index.cjs'),
-      launchArgs: [
-        fixture.workspace,
-        '--no-sandbox',
-        '--disable-gpu',
-        '--disable-workspace-trust',
-        '--disable-extensions',
-        '--skip-welcome',
-        '--skip-release-notes',
-        `--user-data-dir=${userData}`,
-      ],
+      launchArgs,
       extensionTestsEnv: {
         ...fixture.env,
         ...ottili.env,

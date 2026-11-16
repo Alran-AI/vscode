@@ -44,6 +44,20 @@ function screenshot(name: string): void {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const marketingDir = process.env.ALRAN_E2E_MARKETING_DIR ?? '';
 
+/**
+ * The light theme for the shots. A test run does not always apply the theme from the user settings at
+ * startup, so the setting is written again here: the workbench applies a colour theme whenever the
+ * setting changes.
+ */
+async function useLightTheme(): Promise<void> {
+  if (vscode.window.activeColorTheme?.kind === vscode.ColorThemeKind.Light) return;
+  const theme = vscode.workspace.getConfiguration('workbench');
+  // Two steps: writing the same value again would be no change and would not be applied.
+  await theme.update('colorTheme', 'Dark Modern', vscode.ConfigurationTarget.Global);
+  await theme.update('colorTheme', 'Light 2026', vscode.ConfigurationTarget.Global);
+  await waitFor('the light theme', () => vscode.window.activeColorTheme?.kind === vscode.ColorThemeKind.Light, 15_000);
+}
+
 /** A clean shot for the README: no notifications, no secondary side bar. */
 async function marketingShot(name: string): Promise<void> {
   if (!marketingDir) return;
@@ -466,6 +480,7 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
     async (api) => {
       if (!marketingDir) return;
       const close = (command: string) => vscode.commands.executeCommand(command).then(undefined, () => undefined);
+      await useLightTheme();
       // Every shot starts from a chat of its own, so the transcript shows only that scene.
       const freshChat = async () => {
         for (const id of [...api.runtime.manager.sessions.keys()]) await api.runtime.manager.closeSession(id).catch(() => undefined);
@@ -484,7 +499,12 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       assert.ok(werk, 'Ottili Werk is on offer');
       await api.account.setDefaultModel(werk);
       await api.account.refresh({ usage: true });
-      const source = path.join(workspace, 'src', 'date.ts');
+      const source = path.join(workspace, 'src', 'money.ts');
+      // Two files open, as in a real session: the module that changes and the one that calls it.
+      await vscode.window.showTextDocument(vscode.Uri.file(path.join(workspace, 'src', 'invoice.ts')), {
+        preview: false,
+        viewColumn: vscode.ViewColumn.One,
+      });
       await vscode.window.showTextDocument(vscode.Uri.file(source), { preview: false, viewColumn: vscode.ViewColumn.One });
       api.hub.openInEditor();
       await waitFor('panel ready', () => api.hub.readySurfaceCount > 1, 30_000);
@@ -492,7 +512,10 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       // 1. A finished task: the edit, the explanation, and where to review it.
       let session = await freshChat();
       await session.setConfigOption('permissionMode', 'auto');
-      await api.actions.sendPrompt({ text: 'Make parseDate reject invalid dates', attachments: [] });
+      await api.actions.sendPrompt({
+        text: 'The invoice total is a cent off on some invoices. Can you fix `subtotal` and add a test for it?',
+        attachments: [],
+      });
       await waitFor('demo reply', () => session.model.lastAssistantText()?.includes('Changes') === true, 60_000);
       await waitFor('idle', () => session.meta.status === 'idle');
       await sleep(1_200);
