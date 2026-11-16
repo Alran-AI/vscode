@@ -5,6 +5,7 @@ dist/webview/**/*.map
 !media/icon.png
 !media/activitybar.svg
 !media/walkthrough/**
+!media/screenshots/**
 !docs/feature-parity.md
 !package.json
 !README.md
