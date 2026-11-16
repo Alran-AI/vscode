@@ -63,7 +63,8 @@ describe.skipIf(!findCli())('Ottili account through the real CLI', () => {
     expect(credits.current_month?.by_model?.[0]?.model).toBe('ottili/werk-1.1');
     const models = await account.models(context);
     expect(models.find((model) => model.short === 'werk')?.status).toBe('available');
-    expect(models.find((model) => model.short === 'sonnet')?.status).toBe('requires purchased credit');
+    // Needs the Alran CLI that knows Claude runs on the customer's own key; the older CLI says 'requires purchased credit'.
+    expect(models.find((model) => model.short === 'sonnet')?.status).toBe('needs your Anthropic key');
   });
 
   it('switches company and project', async () => {

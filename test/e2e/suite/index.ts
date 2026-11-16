@@ -426,7 +426,7 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       screenshot('11-model-picker');
       await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
       await picking;
-      assert.ok(api.account.snapshot.models?.some((model) => model.status === 'requires purchased credit'));
+      assert.ok(api.account.snapshot.models?.some((model) => model.status === 'needs your Anthropic key'));
     },
   ],
   [

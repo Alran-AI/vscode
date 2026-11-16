@@ -38,6 +38,11 @@ export interface Project {
 
 export type ModelAvailability =
   | 'available'
+  // Claude runs on the customer's own Anthropic key (BYOK): it is missing, or Anthropic refused it.
+  | 'needs your Anthropic key'
+  | 'Anthropic rejected your key'
+  | 'keys not available here'
+  // A CLI or gateway from before that: Claude was sold for purchased credit.
   | 'requires purchased credit'
   | 'no credit left'
   | 'not offered right now'
@@ -56,8 +61,8 @@ export interface OttiliModel {
   readonly input: number;
   /** Micro-USD per million output tokens. */
   readonly output: number;
-  /** Service fee in basis points. Part of the CLI's payload, not shown next to a price. */
-  readonly feeBps: number;
+  /** `platform` (billed by Ottili from credit) or `byok` (billed by the maker, on the customer's own key). */
+  readonly billing?: string;
   readonly credit: string;
   readonly description: string;
   readonly status: ModelAvailability;
@@ -70,8 +75,8 @@ export interface UsageRow {
   readonly input_tokens?: number;
   readonly output_tokens?: number;
   readonly cost_microcents: number;
-  /** Part of the CLI's payload. The terms and conditions carry the fee, the editor does not show it. */
-  readonly service_fee_microcents?: number;
+  /** `byok`: billed by the maker on the customer's own key — `cost_microcents` is 0 here. */
+  readonly billing?: string;
 }
 
 export interface Credits {
@@ -81,13 +86,13 @@ export interface Credits {
   readonly reserved_microcents?: number;
   readonly free_credit?: { readonly granted_microcents?: number; readonly remaining_microcents?: number };
   readonly paid_credit?: { readonly available_microcents?: number };
-  readonly models?: readonly { readonly id: string; readonly usable?: boolean; readonly reason?: string | null }[];
+  readonly models?: readonly { readonly id: string; readonly usable?: boolean; readonly reason?: string | null; readonly billing?: string }[];
+  /** The provider keys of the company as a standing — never the key. */
+  readonly byok?: Readonly<Record<string, { readonly configured?: boolean; readonly status?: string | null; readonly hint?: string | null }>>;
   readonly current_month?: {
     readonly from?: string;
     readonly by_model?: readonly UsageRow[];
     readonly total_cost_microcents?: number;
-    /** Part of the CLI's payload, not shown in the editor. */
-    readonly total_service_fee_microcents?: number;
   };
 }
 
@@ -380,7 +385,7 @@ export function formatMicroUsd(micro: number | undefined): string {
   return `${value < 0 ? '-' : ''}$${abs.toFixed(digits)}`;
 }
 
-/** "$0.50 / $1.50 per 1M tokens". The service fee is not part of it, as in the terminal UI. */
+/** "$0.50 / $1.50 per 1M tokens". For Claude these are Anthropic's own prices, billed to the customer's own account. */
 export function formatModelPrice(model: Pick<OttiliModel, 'input' | 'output'>): string {
   return `${formatMicroUsd(model.input)} / ${formatMicroUsd(model.output)} per 1M tokens`;
 }

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.1
+
+Claude runs on your own Anthropic key. Needs the Alran CLI release that goes with it (the older one still works, and says "needs purchased credit" where the new one says what Claude really needs).
+
+### Changed
+
+- **Claude is billed by Anthropic, not by Ottili.** The Ottili gateway no longer resells Claude: it holds the Anthropic API key you add (once, in the Ottili AI Platform under Settings → Provider keys) and Anthropic bills your own account. Ottili charges nothing for Claude and the 4.5 % service fee is gone. Werk is unchanged.
+- **A new command, *Alran: Add or Replace Your Anthropic Key*,** opens the page where the key lives; the Account view has an *Anthropic key* row (hint and state of the key, a warning when none is stored or Anthropic rejected it) with the same button, and the Account toolbar too.
+- **The model picker** says *Needs your Anthropic key* or *Anthropic rejected your key* instead of "needs purchased credit", and offers **Add Anthropic Key** before it switches to a model that cannot run yet.
+- **Failure cards that mean what they say.** A Claude turn that fails on the key shows *Claude needs your Anthropic key* or *Anthropic does not accept your API key* with **Add your Anthropic key** and **Switch to Ottili Werk**; an Anthropic account without credit says so and points to the Anthropic Console, not to Ottili credit.
+- **The Account view** lists Claude's tokens as *billed by Anthropic* and totals only what Ottili charged (*Charged by Ottili this month*). Purchased credit is for Werk.
+- The walkthrough, the README and the welcome text no longer say Claude needs purchased credit or carries a fee.
+
 ## 1.0.0
 
 The first public release. Needs the Alran CLI 0.9.0 or newer.

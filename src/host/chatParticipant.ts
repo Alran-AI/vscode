@@ -20,6 +20,7 @@ interface AlranChatResultMetadata {
 const FAILURE_COMMANDS: Partial<Record<FailureAction, readonly [string, string]>> = {
   'sign-in': ['alran.login', 'Sign in'],
   'add-credits': ['alran.openBilling', 'Add credit'],
+  'add-provider-key': ['alran.openProviderKeys', 'Add your Anthropic key'],
   'show-usage': ['alran.accountUsage', 'Show usage'],
   'switch-model': ['alran.pickModel', 'Choose another model'],
   'use-werk': ['alran.useWerk', 'Switch to Ottili Werk'],

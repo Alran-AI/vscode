@@ -13,7 +13,34 @@ describe('describeFailure', () => {
     });
   });
 
-  it('explains the welcome-credit restriction with Werk as the way out', () => {
+  it('says that Claude needs the customer\'s own Anthropic key, and where to add it', () => {
+    const view = describeFailure(
+      'Internal error: Alran Code Runtime failed: 403 {"error":{"code":"byok_key_required","message":"Anthropic models run on your own Anthropic API key. Add it under Settings → Provider keys."}}',
+    );
+    expect(view).toMatchObject({ kind: 'model-restricted', title: 'Claude needs your Anthropic key', retryable: false });
+    expect(view.actions).toEqual(['add-provider-key', 'use-werk']);
+    expect(view.detail).toContain('Ottili charges nothing');
+    expect(JSON.stringify(view)).not.toMatch(/purchased credit|service fee|4\.5/iu);
+  });
+
+  it('says when Anthropic does not accept the stored key', () => {
+    for (const code of ['byok_key_invalid', 'byok_key_rejected']) {
+      const view = describeFailure(`Alran Code Runtime failed: 403 {"error":{"code":"${code}","message":"Anthropic rejected your API key."}}`);
+      expect(view).toMatchObject({ kind: 'model-restricted', title: 'Anthropic does not accept your API key' });
+      expect(view.actions).toEqual(['add-provider-key', 'use-werk']);
+    }
+  });
+
+  it('points an Anthropic account without credit at Anthropic, not at Ottili credit', () => {
+    const view = describeFailure(
+      'Alran Code Runtime failed: 402 {"error":{"code":"byok_provider_billing","message":"Your Anthropic account cannot pay for this request."}}',
+    );
+    expect(view).toMatchObject({ kind: 'credits', title: 'Your Anthropic account cannot pay for this request' });
+    expect(view.actions).toEqual(['use-werk', 'switch-model']);
+    expect(view.actions).not.toContain('add-credits');
+  });
+
+  it('still understands a gateway from before Claude ran on the customer\'s own key', () => {
     const view = describeFailure(
       'Internal error: Alran Code Runtime failed: 402 {"error":{"code":"free_credit_model_restricted","message":"Welcome credit covers Ottili Werk only."}}',
     );

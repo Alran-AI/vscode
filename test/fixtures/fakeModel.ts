@@ -180,9 +180,9 @@ async function respond(
     const errors: Record<number, { code: string; message: string; type: string }> = {
       401: { code: 'unauthenticated', type: 'authentication_error', message: 'The session has ended.' },
       402: {
-        code: 'free_credit_model_restricted',
+        code: 'byok_provider_billing',
         type: 'insufficient_quota',
-        message: 'Welcome credit covers Ottili Werk only. Add purchased credit to use this model.',
+        message: 'Your Anthropic account cannot pay for this request. Anthropic bills this usage to you, not Ottili.',
       },
       429: { code: 'rate_limited', type: 'rate_limit_error', message: 'Too many requests.' },
       500: { code: 'upstream_error', type: 'server_error', message: 'The upstream model failed.' },

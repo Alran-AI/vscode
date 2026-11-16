@@ -432,6 +432,9 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
       case 'add-credits':
         await this.accountService?.openBilling();
         break;
+      case 'add-provider-key':
+        await this.accountService?.openProviderKeys();
+        break;
       case 'show-usage':
         await this.showPage('account');
         await this.accountService?.refresh({ usage: true });

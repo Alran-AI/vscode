@@ -382,14 +382,18 @@ export class AlranActions {
     const key = modelKeyFromConfigValue(picked.value);
     const model = key ? catalog.get(key) : undefined;
     if (model && model.status !== 'available' && model.status !== 'sign in to check') {
-      const add = 'Add Credits';
+      // Claude needs the customer's own Anthropic key, not Ottili credit; the old statuses are a gateway
+      // from before that.
+      const needsKey = model.status === 'needs your Anthropic key' || model.status === 'Anthropic rejected your key' || model.status === 'keys not available here';
+      const add = needsKey ? 'Add Anthropic Key' : 'Add Credits';
       const anyway = 'Use It Anyway';
       const choice = await vscode.window.showWarningMessage(
         `${model.name}: ${availabilityLabel(model)}.`,
         {
           modal: true,
-          detail:
-            model.status === 'requires purchased credit'
+          detail: needsKey
+            ? 'Claude runs on your own Anthropic API key, which Anthropic bills directly — Ottili charges nothing for it. Without a working key, requests to this model are refused.'
+            : model.status === 'requires purchased credit'
               ? 'Welcome credit covers Ottili Werk. Claude models are paid with purchased credit; requests without it are refused.'
               : 'Requests to this model are refused until you add credit.',
         },
@@ -397,7 +401,8 @@ export class AlranActions {
         anyway,
       );
       if (choice === add) {
-        await this.account.openBilling();
+        if (needsKey) await this.account.openProviderKeys();
+        else await this.account.openBilling();
         return;
       }
       if (choice !== anyway) return;

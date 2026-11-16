@@ -2,7 +2,7 @@
   "name": "alran-vscode",
   "displayName": "Alran Code",
   "description": "Ottili's AI coding agent for VS Code. Describe a task and it plans it, edits the files, runs your tests and keeps going — with Ottili Werk, Claude or your own model. Needs the Alran Code CLI.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "ottili",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -591,6 +591,12 @@
         "title": "Add Credit and Manage Billing",
         "category": "Alran",
         "icon": "$(credit-card)"
+      },
+      {
+        "command": "alran.openProviderKeys",
+        "title": "Add or Replace Your Anthropic Key (Claude)",
+        "category": "Alran",
+        "icon": "$(key)"
       },
       {
         "command": "alran.refreshAccount",

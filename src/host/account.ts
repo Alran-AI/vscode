@@ -27,6 +27,8 @@ export const AUTH_PROVIDER_ID = 'alran';
 const AUTH_PROVIDER_LABEL = 'Ottili';
 const DEFAULT_BILLING_URL = 'https://ai.ottili.one/billing';
 const API_KEYS_URL = 'https://ai.ottili.one/api-keys';
+/** Where the customer keeps their own Anthropic key, which Claude runs on. */
+const PROVIDER_KEYS_URL = 'https://ai.ottili.one/settings/provider-keys';
 const USAGE_REFRESH_MS = 60_000;
 
 export interface AccountSnapshot {
@@ -461,6 +463,11 @@ export class AccountService implements vscode.Disposable {
     if (picked && !picked.model.default) await this.setDefaultModel(picked.model);
   }
 
+  /** The page of the AI Platform where the customer adds the Anthropic key Claude runs on. */
+  async openProviderKeys(): Promise<void> {
+    await openExternalUrl(PROVIDER_KEYS_URL);
+  }
+
   async openBilling(): Promise<void> {
     let url = this.current.billing?.manage_at || DEFAULT_BILLING_URL;
     if (this.signedIn && !this.current.billing) {
@@ -478,10 +485,17 @@ export class AccountService implements vscode.Disposable {
   }
 }
 
-export function availabilityLabel(model: Pick<OttiliModel, 'status'>): string {
+export function availabilityLabel(model: Pick<OttiliModel, 'status'> & { readonly billing?: string }): string {
   switch (model.status) {
     case 'available':
-      return 'Covered by your credit';
+      return model.billing === 'byok' ? 'Runs on your Anthropic key' : 'Covered by your credit';
+    case 'needs your Anthropic key':
+      return 'Needs your Anthropic key';
+    case 'Anthropic rejected your key':
+      return 'Anthropic rejected your key';
+    case 'keys not available here':
+      return 'Not available on this Ottili deployment';
+    // A CLI or gateway from before Claude ran on the customer's own key.
     case 'requires purchased credit':
       return 'Needs purchased credit';
     case 'no credit left':

@@ -57,9 +57,9 @@ describe('formatting', () => {
     expect(formatMicroUsd(undefined)).toBe('$0.00');
   });
 
-  it('formats model prices without the service fee', () => {
+  it('formats model prices as the maker\'s own prices, without any Ottili fee', () => {
     expect(formatModelPrice({ input: 500_000, output: 1_500_000 })).toBe('$0.50 / $1.50 per 1M tokens');
-    const claude = { input: 2_000_000, output: 10_000_000, feeBps: 450 };
+    const claude = { input: 2_000_000, output: 10_000_000 };
     expect(formatModelPrice(claude)).toBe('$2.00 / $10.00 per 1M tokens');
   });
 

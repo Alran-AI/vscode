@@ -23,6 +23,8 @@ export interface FakeOttili {
     session: string | undefined;
     revoked: string[];
     paidCredit: number;
+    /** Whether the company stored its own Anthropic key (Claude runs on it; Anthropic bills it). */
+    anthropicKey: boolean;
     welcomeCredit: number;
   };
   close(): Promise<void>;
@@ -46,6 +48,7 @@ export async function createFakeOttili(options: { readonly upstream?: string } =
     session: undefined,
     revoked: [],
     paidCredit: 0,
+    anthropicKey: false,
     welcomeCredit: 4_800_000,
   };
   let deviceApproved = false;
@@ -127,12 +130,12 @@ export async function createFakeOttili(options: { readonly upstream?: string } =
         ...(typeof request.headers['x-ottili-company'] === 'string' ? { company: request.headers['x-ottili-company'] } : {}),
         ...(typeof request.headers['x-ottili-project'] === 'string' ? { project: request.headers['x-ottili-project'] } : {}),
       });
-      if (model.startsWith('anthropic/') && state.paidCredit <= 0) {
-        return send(response, 402, {
+      if (model.startsWith('anthropic/') && !state.anthropicKey) {
+        return send(response, 403, {
           error: {
-            code: 'free_credit_model_restricted',
-            type: 'insufficient_quota',
-            message: 'Claude models are paid with purchased credit. Your welcome credit covers Ottili Werk.',
+            code: 'byok_key_required',
+            type: 'permission_error',
+            message: 'Anthropic models run on your own Anthropic API key. Add it under Settings → Provider keys.',
           },
         });
       }
@@ -173,7 +176,7 @@ export async function createFakeOttili(options: { readonly upstream?: string } =
     if (route === 'GET /v2/billing/invoices') return data(response, { invoices: [] });
     if (route === 'GET /v2/billing/welcome-credit') return data(response, { welcome_credit: { state: 'granted' } });
     if (route === 'GET /v1/credits') {
-      const paid = state.paidCredit > 0;
+      const keyed = state.anthropicKey;
       return send(response, 200, {
         currency: 'usd',
         available_microcents: state.welcomeCredit + state.paidCredit,
@@ -181,10 +184,11 @@ export async function createFakeOttili(options: { readonly upstream?: string } =
         free_credit: { granted_microcents: 5_000_000, remaining_microcents: state.welcomeCredit },
         paid_credit: { available_microcents: state.paidCredit },
         models: [
-          { id: 'ottili/werk-1.1', usable: true },
-          { id: 'anthropic/claude-sonnet-5.5', usable: paid, reason: paid ? null : 'requires_paid_credit' },
-          { id: 'anthropic/claude-opus-5.5', usable: paid, reason: paid ? null : 'requires_paid_credit' },
+          { id: 'ottili/werk-1.1', usable: true, billing: 'platform' },
+          { id: 'anthropic/claude-sonnet-5.5', usable: keyed, reason: keyed ? null : 'requires_byok_key', billing: 'byok' },
+          { id: 'anthropic/claude-opus-5.5', usable: keyed, reason: keyed ? null : 'requires_byok_key', billing: 'byok' },
         ],
+        byok: { anthropic: { configured: keyed, status: keyed ? 'active' : null, hint: keyed ? 'sk-ant-…test' : null } },
         current_month: {
           from: '2026-11-01T00:00:00.000Z',
           by_model: [

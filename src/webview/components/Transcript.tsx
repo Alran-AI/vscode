@@ -475,6 +475,7 @@ const ACTION_LABELS: Readonly<Record<FailureAction, readonly [string, string]>> 
   retry: ['Try again', 'refresh'],
   'sign-in': ['Sign in', 'account'],
   'add-credits': ['Add credit', 'credit-card'],
+  'add-provider-key': ['Add your Anthropic key', 'key'],
   'show-usage': ['Show usage', 'graph'],
   'switch-model': ['Choose another model', 'hubot'],
   'use-werk': ['Switch to Ottili Werk', 'sparkle'],

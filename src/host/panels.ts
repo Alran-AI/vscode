@@ -88,6 +88,7 @@ const ROW_ACTIONS: Readonly<Record<string, readonly (readonly [string, string, s
   'account.project': [['alran.selectProject', 'project', 'Choose project']],
   'account.model': [['alran.pickDefaultModel', 'star-empty', 'Choose the default model']],
   'account.credits': [['alran.openBilling', 'credit-card', 'Add credit']],
+  'account.anthropicKey': [['alran.openProviderKeys', 'key', 'Add or replace your Anthropic key']],
   'account.user': [['alran.logout', 'sign-out', 'Sign out']],
 };
 
@@ -111,6 +112,7 @@ const TOOLBARS: Readonly<Record<PanelPage, readonly (readonly [string, string, s
   ],
   account: [
     ['alran.openBilling', 'credit-card', 'Add credit and manage billing'],
+    ['alran.openProviderKeys', 'key', 'Add or replace your Anthropic key (Claude)'],
     ['alran.loginOptions', 'sign-in', 'Sign in or change how you connect'],
     ['alran.refreshAccount', 'refresh', 'Refresh'],
     ['alran.update', 'cloud-download', 'Update the Alran CLI'],
@@ -248,7 +250,7 @@ export class PanelHost implements vscode.Disposable {
   /** Account buttons that make no sense in the current state are left out. */
   private toolbarApplies(command: string): boolean {
     const signedIn = this.account.signedIn;
-    if (command === 'alran.openBilling') return signedIn;
+    if (command === 'alran.openBilling' || command === 'alran.openProviderKeys') return signedIn;
     if (command === 'alran.loginOptions') return true;
     return true;
   }

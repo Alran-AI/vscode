@@ -535,7 +535,7 @@ export class AccountTree extends RefreshableTree<AccountNode> {
             kind: 'row',
             id: 'account.credits.paid',
             label: 'Purchased credit',
-            description: `${formatMicroUsd(credits.paid_credit?.available_microcents)} · all models`,
+            description: `${formatMicroUsd(credits.paid_credit?.available_microcents)} · Werk`,
             icon: 'credit-card',
           },
           ...(credits.reserved_microcents
@@ -558,12 +558,26 @@ export class AccountTree extends RefreshableTree<AccountNode> {
           },
         ],
       });
+      // Claude runs on the customer's own Anthropic key: Anthropic bills it, Ottili does not.
+      const anthropic = credits.byok?.anthropic;
+      rows.push({
+        kind: 'row',
+        id: 'account.anthropicKey',
+        label: 'Anthropic key',
+        description: anthropic?.configured
+          ? `${anthropic.hint ?? 'stored'} · ${anthropic.status === 'invalid' ? 'rejected by Anthropic' : 'active'}`
+          : 'not added — Claude needs it',
+        tooltip: 'Claude runs on your own Anthropic API key. Anthropic bills it directly; Ottili charges nothing for Claude. Add or replace the key in the Ottili AI Platform.',
+        icon: anthropic?.configured && anthropic.status !== 'invalid' ? 'key' : 'warning',
+        contextValue: 'account.anthropicKey',
+        command: run('alran.openProviderKeys', 'Add Your Anthropic Key'),
+      });
       const month = credits.current_month;
       const byModel = month?.by_model ?? [];
       rows.push({
         kind: 'row',
         id: 'account.month',
-        label: 'Spent this month',
+        label: 'Charged by Ottili this month',
         description: formatMicroUsd(month?.total_cost_microcents ?? 0),
         tooltip: month?.from ? `Since ${month.from.slice(0, 10)}` : undefined,
         icon: 'graph',
@@ -572,7 +586,7 @@ export class AccountTree extends RefreshableTree<AccountNode> {
               kind: 'row' as const,
               id: `account.month.${row.model}`,
               label: row.model,
-              description: `${formatMicroUsd(row.cost_microcents)} · ${String(row.requests)} request${row.requests === 1 ? '' : 's'}`,
+              description: `${row.billing === 'byok' ? 'billed by Anthropic' : formatMicroUsd(row.cost_microcents)} · ${String(row.requests)} request${row.requests === 1 ? '' : 's'}`,
               tooltip: `${String((row.input_tokens ?? 0) + (row.output_tokens ?? 0))} tokens`,
               icon: 'symbol-number',
             }))

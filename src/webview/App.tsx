@@ -271,7 +271,7 @@ function ConnectionCard({ connection }: { readonly connection: ConnectionState }
       <div class="empty card-center">
         <AlranMark size={44} />
         <h3>Connect Alran Code</h3>
-        <p>Sign in with your Ottili account to use Ottili Werk and Claude models. New accounts get welcome credit for Werk.</p>
+        <p>Sign in with your Ottili account to use Ottili Werk and Claude models. New accounts get welcome credit for Werk; Claude runs on your own Anthropic key.</p>
         <SignInOptions />
       </div>
     );

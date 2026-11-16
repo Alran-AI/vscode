@@ -59,13 +59,14 @@ describe.skipIf(!findCli())('Ottili models through the Gateway', () => {
     expect(ottili.completions.at(-1)).toEqual({ model: 'ottili/werk-1.1', company: 'cmp-acme', project: 'prj-web' });
   }, 60_000);
 
-  it('explains that Claude needs purchased credit', async () => {
+  it('explains that Claude needs the customer\'s own Anthropic key', async () => {
     await choose('alran/anthropic/claude-sonnet-5.5', 'thinking');
     await session.submit({ text: 'review this with Claude', attachments: [] });
     const notice = session.model.items.findLast((item) => item.kind === 'notice');
     expect(notice?.kind === 'notice' && notice.failure).toMatchObject({
       kind: 'model-restricted',
-      actions: ['use-werk', 'add-credits'],
+      title: 'Claude needs your Anthropic key',
+      actions: ['add-provider-key', 'use-werk'],
     });
     expect(ottili.completions.at(-1)?.model).toBe('anthropic/claude-sonnet-5.5');
   }, 90_000);

@@ -24,6 +24,7 @@ export type FailureAction =
   | 'retry'
   | 'sign-in'
   | 'add-credits'
+  | 'add-provider-key'
   | 'show-usage'
   | 'switch-model'
   | 'use-werk'
@@ -126,6 +127,40 @@ export function describeFailure(raw: string): FailureView {
   };
   const withReason = (detail: string) => (reason && !detail.includes(reason) ? `${detail} ${reason}` : detail);
 
+  // Claude runs on the customer's own Anthropic API key, which the Ottili gateway holds for them. These
+  // refusals are about THAT key and THAT account: the way out is the page where the key lives — not a top-up
+  // of Ottili credit, which does not pay for Claude.
+  if (/byok_provider_billing|Anthropic account cannot pay/iu.test(text)) {
+    return {
+      ...base,
+      kind: 'credits',
+      title: 'Your Anthropic account cannot pay for this request',
+      detail: 'Claude is billed by Anthropic to your own account, not by Ottili. Check your balance in the Anthropic Console, or switch to Ottili Werk.',
+      actions: ['use-werk', 'switch-model'],
+      retryable: false,
+    };
+  }
+  if (/byok_key_(?:invalid|rejected|forbidden)|Anthropic (?:rejected|refused|does not accept) your API key|does not allow your API key/iu.test(text)) {
+    return {
+      ...base,
+      kind: 'model-restricted',
+      title: 'Anthropic does not accept your API key',
+      detail: 'Claude runs on your own Anthropic API key. Replace it in the Ottili AI Platform, or switch to Ottili Werk.',
+      actions: ['add-provider-key', 'use-werk'],
+      retryable: false,
+    };
+  }
+  if (/byok_key_required|byok_unavailable|Anthropic models run on your own Anthropic API key/iu.test(text)) {
+    return {
+      ...base,
+      kind: 'model-restricted',
+      title: 'Claude needs your Anthropic key',
+      detail: 'Claude runs on your own Anthropic API key, which Anthropic bills directly — Ottili charges nothing for it. Add the key in the Ottili AI Platform, or switch to Ottili Werk.',
+      actions: ['add-provider-key', 'use-werk'],
+      retryable: false,
+    };
+  }
+  // A gateway from before Claude ran on the customer's own key still sold it for purchased credit.
   if (/free_credit_model_restricted|requires_paid_credit|welcome credit covers/iu.test(text)) {
     return {
       ...base,

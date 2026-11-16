@@ -397,6 +397,7 @@ export function registerCommands(deps: CommandDependencies): vscode.Disposable[]
     'alran.selectProject': () => account.selectProject(),
     'alran.pickDefaultModel': () => account.pickDefaultModel(),
     'alran.openBilling': () => account.openBilling(),
+    'alran.openProviderKeys': () => account.openProviderKeys(),
     'alran.refreshAccount': () => account.refresh({ usage: true }),
     'alran.accountUsage': async () => {
       await vscode.commands.executeCommand('alran.account.focus');
