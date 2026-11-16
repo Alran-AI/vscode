@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { isInterestingPath } from './core/changes';
 import type { AttentionEvent } from './core/session';
+import { rateStatus } from './shared/rate';
 import type { ConnectionState, SessionMeta } from './shared/types';
 import { AlranCliNotFoundError } from './acp/binary';
 import { formatMicroUsd } from './core/account';
@@ -50,6 +51,8 @@ export interface AlranExtensionApi {
   readonly store: StoreBrowser;
   /** The Ottili account in the editor's Accounts menu. */
   readonly authProvider: OttiliAuthenticationProvider;
+  /** What the status bar shows, for tests: it has no API to read an item back. */
+  readonly statusBar: { rateText(): string | undefined };
   /** `@alran` in the editor's Chat view, where the editor has one. */
   readonly chatParticipant?: AlranChatParticipant;
   readonly trees: {
@@ -78,6 +81,7 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
   const capabilities = new CapabilitiesTree(runtime);
   const store = new StoreBrowser(runtime, actions, documents);
   const accountTree = new AccountTree(runtime, account);
+  const statusBar = new StatusBar(runtime, account);
   const panels = new PanelHost(runtime, account, {
     sessions,
     changes,
@@ -126,7 +130,7 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
       providedCodeActionKinds: AlranCodeActions.kinds,
     }),
     ...registerCommands({ runtime, actions, hub, account, sessions, changes, agents, capabilities, store }),
-    new StatusBar(runtime, account),
+    statusBar,
     new AttentionNotifier(runtime, hub),
     createChangeWatcher(runtime),
     registerContextKeys(runtime, account),
@@ -159,6 +163,7 @@ export function activate(context: vscode.ExtensionContext): AlranExtensionApi {
     account,
     panels,
     store,
+    statusBar,
     authProvider: auth.provider,
     ...(chat.participant ? { chatParticipant: chat.participant } : {}),
     trees: { sessions, changes, agents, capabilities, account: accountTree },
@@ -176,11 +181,14 @@ export function deactivate(): void {
 
 /** Model, permission, and context usage of the active Session, at a glance. */
 class StatusBar implements vscode.Disposable {
+  /** The speed of the answer being written, left of the rest (a higher priority sits further left). */
+  private readonly rate = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101);
   private readonly main = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   private readonly model = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
   private readonly permission = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
   private readonly context = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 97);
   private readonly disposables: vscode.Disposable[];
+  private rateShown = false;
 
   constructor(
     private readonly runtime: AlranRuntime,
@@ -188,6 +196,8 @@ class StatusBar implements vscode.Disposable {
   ) {
     this.main.command = 'alran.openChat';
     this.main.name = 'Alran Code';
+    this.rate.name = 'Alran Code: Output speed';
+    this.rate.command = 'alran.openChat';
     this.model.name = 'Alran Code: Model';
     this.permission.name = 'Alran Code: Permission Mode';
     this.context.name = 'Alran Code: Context';
@@ -202,6 +212,11 @@ class StatusBar implements vscode.Disposable {
     ];
     this.render();
     this.main.show();
+  }
+
+  /** The speed item's text while it is shown, otherwise undefined. */
+  rateText(): string | undefined {
+    return this.rateShown ? this.rate.text : undefined;
   }
 
   private tooltip(connection: ConnectionState, meta: SessionMeta | undefined): vscode.MarkdownString {
@@ -241,6 +256,15 @@ class StatusBar implements vscode.Disposable {
         : meta?.status === 'awaiting-input'
           ? new vscode.ThemeColor('statusBarItem.warningBackground')
           : undefined;
+    const rate = rateStatus(meta?.outputRate);
+    if (rate) {
+      this.rate.text = rate.text;
+      this.rate.tooltip = rate.tooltip;
+      this.rate.show();
+    } else {
+      this.rate.hide();
+    }
+    this.rateShown = rate !== undefined;
     const model = meta?.config.find((option) => option.id === 'model');
     const permission = meta?.config.find((option) => option.id === 'permissionMode');
     this.renderOption(this.model, '$(hubot)', model);
@@ -292,6 +316,7 @@ class StatusBar implements vscode.Disposable {
 
   dispose(): void {
     for (const disposable of this.disposables) disposable.dispose();
+    this.rate.dispose();
     this.main.dispose();
     this.model.dispose();
     this.permission.dispose();

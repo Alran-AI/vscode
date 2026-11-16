@@ -58,3 +58,25 @@ export class OutputRateTracker {
 export function formatTokensPerSecond(value: number): string {
   return String(value >= 10 ? Math.round(value) : Math.round(value * 10) / 10);
 }
+
+export interface RateStatus {
+  /** Status bar text with a codicon: `$(zap) ~225 t/s`. */
+  readonly text: string;
+  readonly tooltip: string;
+}
+
+/**
+ * What the status bar shows about the speed: only while an answer is streaming.
+ *
+ * Once the turn is over the figure belongs to the chat ("last answer was written at"), and a status bar
+ * that kept it would show a speed for an agent that is no longer writing. The `~` stays: it is an
+ * estimate from the text length, here as in the chat and in the CLI.
+ */
+export function rateStatus(view: OutputRateView | undefined): RateStatus | undefined {
+  if (!view?.live) return undefined;
+  const figure = formatTokensPerSecond(view.tokensPerSecond);
+  return {
+    text: `$(zap) ${view.estimated ? '~' : ''}${figure} t/s`,
+    tooltip: `Alran is writing at about ${figure} tokens per second${view.estimated ? ' (estimated from the length of the text)' : ''}. Click to open the chat.`,
+  };
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatTokensPerSecond, OutputRateTracker } from '../../src/shared/rate';
+import { formatTokensPerSecond, OutputRateTracker, rateStatus } from '../../src/shared/rate';
 
 describe('OutputRateTracker', () => {
   it('says nothing until there is enough to say', () => {
@@ -45,5 +45,29 @@ describe('formatTokensPerSecond', () => {
     expect(formatTokensPerSecond(202.4)).toBe('202');
     expect(formatTokensPerSecond(9.46)).toBe('9.5');
     expect(formatTokensPerSecond(10)).toBe('10');
+  });
+});
+
+describe('rateStatus', () => {
+  it('shows the speed with a zap icon while an answer streams', () => {
+    const status = rateStatus({ tokensPerSecond: 224.6, estimated: false, live: true });
+    expect(status?.text).toBe('$(zap) 225 t/s');
+    expect(status?.tooltip).toContain('about 225 tokens per second');
+    expect(status?.tooltip).not.toContain('estimated');
+  });
+
+  it('keeps the tilde of an estimate, as the chat and the CLI do', () => {
+    const status = rateStatus({ tokensPerSecond: 211.2, estimated: true, live: true });
+    expect(status?.text).toBe('$(zap) ~211 t/s');
+    expect(status?.tooltip).toContain('estimated');
+  });
+
+  it('prints one decimal below ten, like the chat', () => {
+    expect(rateStatus({ tokensPerSecond: 9.46, estimated: true, live: true })?.text).toBe('$(zap) ~9.5 t/s');
+  });
+
+  it('shows nothing once the turn is over, or before there is a figure', () => {
+    expect(rateStatus({ tokensPerSecond: 210, estimated: true, live: false })).toBeUndefined();
+    expect(rateStatus(undefined)).toBeUndefined();
   });
 });

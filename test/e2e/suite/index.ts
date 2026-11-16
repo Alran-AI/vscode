@@ -189,6 +189,23 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
     },
   ],
   [
+    'shows the output speed in the status bar while an answer streams, and takes it away afterwards',
+    async (api) => {
+      const session = api.runtime.manager.active!;
+      await waitFor('idle', () => session.meta.status === 'idle', 30_000);
+      assert.equal(api.statusBar.rateText(), undefined, 'no speed is shown while the agent is idle');
+      void api.actions.sendPrompt({ text: 'DO_STREAM now', attachments: [] });
+      await waitFor('the speed in the status bar', () => api.statusBar.rateText() !== undefined, 30_000);
+      const shown = api.statusBar.rateText() ?? '';
+      // An estimate (the protocol carries no token counts for streamed text), so it keeps its tilde.
+      assert.match(shown, /^\$\(zap\) ~\d+(\.\d)? t\/s$/u, `the status bar says: ${shown}`);
+      await sleep(400);
+      screenshot('06b-speed');
+      await waitFor('idle again', () => session.meta.status === 'idle', 30_000);
+      assert.equal(api.statusBar.rateText(), undefined, 'the speed leaves with the answer');
+    },
+  ],
+  [
     'fills the Sessions, Changes and Capabilities views',
     async (api) => {
       const session = api.runtime.manager.active!;

@@ -281,6 +281,9 @@ async function respond(
         },
       ],
     });
+  } else if (text.includes('DO_STREAM')) {
+    // About four seconds of steady text: long enough for the speed to be live while it is looked at.
+    await say('streaming '.repeat(150), 30);
   } else if (text.includes('DO_SLOW')) {
     await say('working '.repeat(40), 30);
   } else if (text.includes('DO_THINK')) {
