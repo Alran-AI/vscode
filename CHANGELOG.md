@@ -2,7 +2,7 @@
 
 ## 1.0.1
 
-Claude runs on your own Anthropic key. Needs the Alran CLI release that goes with it (the older one still works, and says "needs purchased credit" where the new one says what Claude really needs).
+Claude runs on your own Anthropic key. Works with the Alran CLI 0.9.0 or newer; the new statuses and sentences come with **Alran CLI 1.0.1** (`npm install -g alran` or **Alran: Update Alran CLI**) — an older CLI still works and says "needs purchased credit" where the new one says what Claude really needs.
 
 ### Changed
 
