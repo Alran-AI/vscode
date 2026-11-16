@@ -50,12 +50,13 @@ xvfb-run -a -s "-screen 0 1440x900x24" pnpm test:e2e
 1. Update `version` in `package.json` and add a `CHANGELOG.md` entry.
 2. Run the checks above, including the end-to-end suite.
 3. `pnpm package`, then install the `.vsix` in a clean VS Code profile and try sign-in, a task and the Account view.
-4. Publish the same `.vsix` to both registries:
+4. Push the release commit and a `v<version>` tag, so the README's relative links and images resolve on GitHub.
+5. Publish a GitHub Release for that tag. This starts `.github/workflows/release-vsm-ovsx.yml`, which typechecks, runs the unit tests, builds the `.vsix` and publishes it to the Visual Studio Marketplace and Open VSX. The workflow fails when the tag and the `package.json` version differ, and it skips a registry that already has that version (`--skip-duplicate`).
+
+   It needs the repository secrets `VSCE_PAT` (publisher `ottili`, Marketplace *Manage* scope) and `OVSX_PAT` (namespace `ottili`; create it once with `npx ovsx create-namespace ottili`).
+6. If the workflow cannot run, publish the `.vsix` from step 3 by hand:
 
    ```sh
    pnpm exec vsce publish --packagePath alran-vscode-<version>.vsix          # VSCE_PAT for publisher "ottili"
    npx --yes ovsx@1.4.0 publish alran-vscode-<version>.vsix                  # OVSX_PAT for namespace "ottili"
    ```
-
-   The Visual Studio Marketplace needs the publisher `ottili` and a token with the *Marketplace (Manage)* scope; Open VSX needs the namespace `ottili` (`npx ovsx create-namespace ottili`) and an access token.
-5. Push the release commit and a `v<version>` tag, so the README's relative links and images resolve on GitHub.

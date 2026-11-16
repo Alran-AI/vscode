@@ -1,0 +1,89 @@
+name: Release to VS Marketplace and Open VSX
+
+# Publishing a GitHub release whose tag is v<version> publishes the VSIX to both registries.
+# A manual run publishes from the chosen branch, or only packages the VSIX with dry_run.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and package the VSIX without publishing it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-vsm-ovsx
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the VSIX
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check that the tag matches package.json
+        if: github.event_name == 'release'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match package.json version v${version}."
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Unit tests
+        run: pnpm run test:unit
+
+      - name: Package the extension
+        run: pnpm run package
+
+      - name: Check the VSIX
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          vsix="alran-vscode-${version}.vsix"
+          if [ ! -f "${vsix}" ]; then
+            echo "::error::${vsix} was not produced."
+            exit 1
+          fi
+          echo "VSIX=${vsix}" >> "${GITHUB_ENV}"
+
+      - name: Keep the VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: "*.vsix"
+          if-no-files-found: error
+
+      - name: Publish to Visual Studio Marketplace
+        if: github.event_name == 'release' || inputs.dry_run != true
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: pnpm exec vsce publish --packagePath "${VSIX}" --skip-duplicate
+
+      - name: Publish to Open VSX
+        if: github.event_name == 'release' || inputs.dry_run != true
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx@1.4.0 publish "${VSIX}" --skip-duplicate
