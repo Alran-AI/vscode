@@ -10,6 +10,8 @@ export const AUTH_REQUIRED_CODE = -32000;
 
 export const EXTENSION_NAMESPACE = 'alran-code/extensions';
 const EXTENSION_VERSION = 1;
+/** The CLI tells the client the output speed the provider measured (the figure its own terminal UI shows). */
+export const OUTPUT_RATE_NOTIFICATION = 'alran/session/output_rate_update';
 
 export interface AgentLaunchOptions {
   readonly cli: ResolvedCli;
@@ -40,9 +42,16 @@ export interface AgentHandlers {
   onQueueUpdate(sessionId: string, items: readonly RuntimeQueueItem[]): void;
   onGoalUpdate(sessionId: string, goal: unknown): void;
   onDelegationUpdate(sessionId: string, snapshot: DelegationSnapshot): void;
+  onOutputRate(sessionId: string, rate: CliOutputRate): void;
   onCurrentSession(sessionId: string | null): void;
   onLog(line: string): void;
   onExit(info: AgentExit): void;
+}
+
+/** Output tokens over decode time as the provider measured them; `estimated` is false for a measured figure. */
+export interface CliOutputRate {
+  readonly tokensPerSecond: number;
+  readonly estimated: boolean;
 }
 
 export interface AgentExit {
@@ -119,6 +128,14 @@ export class AlranAgent {
       | { readonly methods?: readonly string[] }
       | undefined;
     return new Set(raw?.methods ?? []);
+  }
+
+  /** The notifications this CLI says it sends (an older CLI sends fewer). */
+  get extensionNotifications(): ReadonlySet<string> {
+    const raw = this.initializeResult?._meta?.[EXTENSION_NAMESPACE] as
+      | { readonly notifications?: readonly string[] }
+      | undefined;
+    return new Set(raw?.notifications ?? []);
   }
 
   private get agent(): acp.ClientContext {
@@ -255,6 +272,17 @@ export class AlranAgent {
         'alran/session/delegation_update',
         identity<{ sessionId: string; snapshot: DelegationSnapshot }>,
         ({ params }) => handlers.onDelegationUpdate(params.sessionId, params.snapshot),
+      )
+      .onNotification(
+        OUTPUT_RATE_NOTIFICATION,
+        identity<{ sessionId: string; tokensPerSecond: number; estimated?: boolean }>,
+        ({ params }) => {
+          if (typeof params.tokensPerSecond !== 'number' || !Number.isFinite(params.tokensPerSecond) || params.tokensPerSecond <= 0) return;
+          handlers.onOutputRate(params.sessionId, {
+            tokensPerSecond: params.tokensPerSecond,
+            estimated: params.estimated === true,
+          });
+        },
       )
       .onNotification(
         'alran/session/current_session_update',

@@ -189,20 +189,52 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
     },
   ],
   [
-    'shows the output speed in the status bar while an answer streams, and takes it away afterwards',
+    'shows the speed the CLI measured in the status bar while the turn runs, and takes it away afterwards',
     async (api) => {
       const session = api.runtime.manager.active!;
       await waitFor('idle', () => session.meta.status === 'idle', 30_000);
       assert.equal(api.statusBar.rateText(), undefined, 'no speed is shown while the agent is idle');
+
+      // Two model calls in one turn (see DO_STREAM in the fake model). The CLI measures the speed of a
+      // call when it is done: provider output tokens over decode time, about 66 a second here. Until the
+      // first call is done there is nothing measured, and the status bar guesses nothing.
+      const seen: string[] = [];
+      const started = Date.now();
       void api.actions.sendPrompt({ text: 'DO_STREAM now', attachments: [] });
-      await waitFor('the speed in the status bar', () => api.statusBar.rateText() !== undefined, 30_000);
-      const shown = api.statusBar.rateText() ?? '';
-      // An estimate (the protocol carries no token counts for streamed text), so it keeps its tilde.
-      assert.match(shown, /^\$\(zap\) ~\d+(\.\d)? t\/s$/u, `the status bar says: ${shown}`);
+      await waitFor(
+        'the speed the CLI measured',
+        () => {
+          const text = api.statusBar.rateText();
+          if (text !== undefined) seen.push(text);
+          return text !== undefined;
+        },
+        30_000,
+      );
+      assert.ok(Date.now() - started > 1_500, 'nothing is shown before the first model call is done');
+      const first = seen[0] ?? '';
+      // Whole tokens and no tilde: this is the CLI's figure, not an estimate from the text length.
+      assert.match(first, /^\$\(zap\) \d+ t\/s$/u, `the status bar says: ${first}`);
+      const figure = Number(/\d+/u.exec(first)![0]);
+      assert.ok(figure >= 15 && figure <= 80, `a speed of about 66 tokens a second was measured, the status bar says ${String(figure)}`);
       await sleep(400);
       screenshot('06b-speed');
-      await waitFor('idle again', () => session.meta.status === 'idle', 30_000);
-      assert.equal(api.statusBar.rateText(), undefined, 'the speed leaves with the answer');
+
+      // It stays while the second call streams, and it is never replaced by an estimate.
+      await waitFor(
+        'idle again',
+        () => {
+          const text = api.statusBar.rateText();
+          if (text !== undefined) seen.push(text);
+          return session.meta.status === 'idle';
+        },
+        30_000,
+      );
+      assert.ok(seen.length > 1, 'the speed stayed in the status bar while the turn went on');
+      assert.ok(
+        seen.every((text) => !text.includes('~')),
+        `an estimate was shown next to the measured speed: ${seen.join(' | ')}`,
+      );
+      assert.equal(api.statusBar.rateText(), undefined, 'the speed leaves with the turn');
     },
   ],
   [

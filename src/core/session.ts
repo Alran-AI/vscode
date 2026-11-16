@@ -10,6 +10,8 @@ import {
   type DelegationSnapshot,
   type GoalPatch,
   type RuntimeQueueItem,
+  OUTPUT_RATE_NOTIFICATION,
+  type CliOutputRate,
 } from '../acp/agent';
 import { describeFailure, type FailureView } from '../shared/errors';
 import { OutputRateTracker } from '../shared/rate';
@@ -104,6 +106,8 @@ export class SessionController {
   private detachedTurnExpected = false;
   private readonly outputRate = new OutputRateTracker();
   private lastRateEmit = 0;
+  /** The speed the CLI measured for the running turn, when this CLI sends it. */
+  private cliRate: CliOutputRate | undefined;
 
   constructor(
     readonly id: string,
@@ -248,9 +252,32 @@ export class SessionController {
     }
   }
 
+  /** Whether this CLI sends the output speed it measured, in which case nothing here is estimated. */
+  private cliSuppliesRate(): boolean {
+    try {
+      return this.services.agent().extensionNotifications.has(OUTPUT_RATE_NOTIFICATION);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * The speed the CLI measured: the provider's output tokens over its decode time, the figure the terminal
+   * UI shows. It arrives when a model call has finished, so it moves in steps; an estimate would move
+   * with every chunk and would not be the CLI's number.
+   */
+  handleOutputRate(rate: CliOutputRate): void {
+    if (!this.promptActive) return;
+    this.cliRate = rate;
+    this.meta.outputRate = { tokensPerSecond: rate.tokensPerSecond, estimated: rate.estimated, live: true };
+    this.emitMeta();
+  }
+
   /** Feeds the speed meter with streamed text; the figure reaches the chat a few times a second. */
   private noteOutput(update: acp.SessionUpdate): void {
     if (!this.promptActive) return;
+    // A CLI that measures the speed itself is the source; the estimate is only for one that does not.
+    if (this.cliSuppliesRate()) return;
     if (update.sessionUpdate !== 'agent_message_chunk' && update.sessionUpdate !== 'agent_thought_chunk') return;
     if (update.content.type !== 'text') return;
     const now = Date.now();
@@ -388,6 +415,7 @@ export class SessionController {
     this.lastInput = input;
     this.meta.canRetry = false;
     this.meta.outputRate = undefined;
+    this.cliRate = undefined;
     this.outputRate.reset();
     this.background = false;
     clearTimeout(this.resyncTimer);
@@ -429,7 +457,9 @@ export class SessionController {
     this.promptActive = false;
     this.cancelling = false;
     this.lastTurnEndedAt = Date.now();
-    const finalRate = this.outputRate.view(false);
+    const finalRate = this.cliSuppliesRate()
+      ? this.cliRate && { tokensPerSecond: this.cliRate.tokensPerSecond, estimated: this.cliRate.estimated, live: false }
+      : this.outputRate.view(false);
     if (finalRate) this.meta.outputRate = finalRate;
     else this.meta.outputRate = undefined;
     this.emitItems(this.model.settle({ closeTools: true }));

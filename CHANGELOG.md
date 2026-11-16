@@ -8,7 +8,7 @@ The first public release. Needs the Alran CLI 0.9.0 or newer.
 
 - The side bar is one designed chat, not a chat above five collapsible editor panels. **Chat, Sessions, Changes, Agents, Capabilities** and **Account** are tabs along the top of it (a badge counts changed files and running sub-agents), and the same tabs appear when the chat is open as an editor tab, so it can sit wherever you want it.
 - The agent and the first session start with the editor. The model picker is there when you open the chat and the first message goes out at once. If the agent cannot start, the chat says why and offers a retry, instead of staying silent.
-- The speed of the model shows next to the context meter (`⚡ ~120 tok/s`, estimated from the streamed text; time spent in tools is not counted). The status bar shows it too while an answer is being written (`⚡ ~120 t/s`, left of *Alran*) and takes it away when the answer is done.
+- The speed of the model shows next to the context meter and in the status bar while a turn runs (`⚡ 211 tok/s`). It is the figure the CLI measures, the one its terminal UI shows: the provider's output tokens over the decode time, updated when a model call is done. A CLI older than this release does not send it; the extension then estimates it from the streamed text and marks it with a `~`.
 - A session you open in the terminal says so, and comes back by itself when you close it there. **Reconnect** no longer restarts the whole agent.
 - The Account tab names the installed extension version.
 

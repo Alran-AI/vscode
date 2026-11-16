@@ -377,6 +377,7 @@ export class SessionManager {
       onGoalUpdate: (sessionId, goal) => this.sessions.get(sessionId)?.handleGoal(goal),
       onDelegationUpdate: (sessionId, snapshot) =>
         this.sessions.get(sessionId)?.handleDelegation(snapshot),
+      onOutputRate: (sessionId, rate) => this.sessions.get(sessionId)?.handleOutputRate(rate),
       onCurrentSession: () => undefined,
       onLog: (line) => this.listener.log(line),
       onExit: (info) => this.handleExit(info),

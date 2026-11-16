@@ -1,12 +1,15 @@
 /**
- * Output speed of the model, measured from what the agent streams to the chat.
+ * Output speed of the model.
  *
- * The agent protocol carries no token counts for a streamed answer, so the speed is an estimate:
- * about four characters per token, over the time the text was actually flowing. A pause longer than
- * `IDLE_GAP_MS` (a tool running, a permission prompt, the model thinking silently) is not counted,
- * otherwise a long turn would show the speed of its slowest tool, not of the model.
+ * **The figure is the CLI's.** The CLI measures it (the provider's output tokens over the decode time it
+ * observed, the number its own terminal UI shows) and sends it with `alran/session/output_rate_update`
+ * when a model call is done. A CLI that sends it is trusted and nothing is estimated next to it.
  *
- * The CLI shows the same figure with a `~` when it is an estimate; so does the chat.
+ * `OutputRateTracker` is the fallback for a CLI that does not send it yet. The agent protocol carries no
+ * token counts for streamed text, so the speed is an estimate: about four characters per token, over the
+ * time the text was actually flowing. A pause longer than `IDLE_GAP_MS` (a tool running, a permission
+ * prompt, the model thinking silently) is not counted, otherwise a long turn would show the speed of its
+ * slowest tool, not of the model. An estimate always carries a `~`; the CLI's figure does not.
  */
 
 const CHARS_PER_TOKEN = 4;
@@ -69,14 +72,15 @@ export interface RateStatus {
  * What the status bar shows about the speed: only while an answer is streaming.
  *
  * Once the turn is over the figure belongs to the chat ("last answer was written at"), and a status bar
- * that kept it would show a speed for an agent that is no longer writing. The `~` stays: it is an
- * estimate from the text length, here as in the chat and in the CLI.
+ * that kept it would show a speed for an agent that is no longer writing. The figure is the one the CLI
+ * measured when it sends one (no `~`); for a CLI that does not, it is an estimate from the text length and
+ * keeps its `~`, here as in the chat.
  */
 export function rateStatus(view: OutputRateView | undefined): RateStatus | undefined {
   if (!view?.live) return undefined;
   const figure = formatTokensPerSecond(view.tokensPerSecond);
   return {
     text: `$(zap) ${view.estimated ? '~' : ''}${figure} t/s`,
-    tooltip: `Alran is writing at about ${figure} tokens per second${view.estimated ? ' (estimated from the length of the text)' : ''}. Click to open the chat.`,
+    tooltip: `Alran is writing at about ${figure} tokens per second (${view.estimated ? 'estimated from the length of the text' : 'as measured by Alran Code from the provider’s token count'}). Click to open the chat.`,
   };
 }

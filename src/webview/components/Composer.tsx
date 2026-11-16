@@ -533,7 +533,7 @@ export function Composer({
           {meta?.outputRate ? (
             <span
               class={`rate-meter${meta.outputRate.live ? ' live' : ''}`}
-              title={`${meta.outputRate.live ? 'Writing at' : 'Last answer was written at'} about ${formatTokensPerSecond(meta.outputRate.tokensPerSecond)} tokens per second (estimated from the text length)`}
+              title={`${meta.outputRate.live ? 'Writing at' : 'Last answer was written at'} about ${formatTokensPerSecond(meta.outputRate.tokensPerSecond)} tokens per second (${meta.outputRate.estimated ? 'estimated from the text length' : 'as measured by Alran Code from the provider\'s token count'})`}
             >
               ⚡ {meta.outputRate.estimated ? '~' : ''}{formatTokensPerSecond(meta.outputRate.tokensPerSecond)} tok/s
             </span>

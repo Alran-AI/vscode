@@ -12,6 +12,7 @@ const handlers: AgentHandlers = {
   onQueueUpdate: () => undefined,
   onGoalUpdate: () => undefined,
   onDelegationUpdate: () => undefined,
+  onOutputRate: () => undefined,
   onCurrentSession: () => undefined,
   onLog: () => undefined,
   onExit: () => undefined,

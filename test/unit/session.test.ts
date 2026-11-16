@@ -1,14 +1,15 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AlranAgent } from '../../src/acp/agent';
+import { OUTPUT_RATE_NOTIFICATION, type AlranAgent } from '../../src/acp/agent';
 import { SessionController } from '../../src/core/session';
 
-function createSession() {
+function createSession(options: { notifications?: readonly string[] } = {}) {
   const loadSession = vi.fn().mockResolvedValue({});
   let finishPrompt: (value: { stopReason: string }) => void = () => undefined;
   const agent = {
     extensionMethods: new Set<string>(),
+    extensionNotifications: new Set<string>(options.notifications ?? []),
     loadSession,
     prompt: vi.fn(() => new Promise((resolve) => (finishPrompt = resolve))),
   } as unknown as AlranAgent;
@@ -76,5 +77,92 @@ describe('detached turn detection', () => {
     expect(context.session.meta.status).toBe('idle');
     await vi.advanceTimersByTimeAsync(1_000);
     expect(context.loadSession).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('output speed', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000_000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const chunk = (text: string): acp.SessionUpdate => ({
+    sessionUpdate: 'agent_message_chunk',
+    content: { type: 'text', text },
+  });
+
+  /** Two seconds of steady text: enough for the estimate to have something to say. */
+  async function stream(context: ReturnType<typeof createSession>): Promise<void> {
+    for (let index = 0; index < 20; index += 1) {
+      context.session.handleUpdate(chunk('x'.repeat(40)));
+      await vi.advanceTimersByTimeAsync(100);
+    }
+  }
+
+  /** The turn is returned inside an object: a bare promise returned from an async function would be awaited. */
+  async function startTurn(context: ReturnType<typeof createSession>): Promise<{ turn: Promise<void> }> {
+    const turn = context.session.submit({ text: 'hi', attachments: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    return { turn };
+  }
+
+  it('shows the speed the CLI measured, and estimates nothing next to it', async () => {
+    const context = createSession({ notifications: [OUTPUT_RATE_NOTIFICATION] });
+    const { turn } = await startTurn(context);
+    await stream(context);
+    expect(context.session.meta.outputRate).toBeUndefined();
+
+    context.session.handleOutputRate({ tokensPerSecond: 210, estimated: false });
+    expect(context.session.meta.outputRate).toEqual({ tokensPerSecond: 210, estimated: false, live: true });
+    await stream(context);
+    // Text keeps streaming; the figure stays the CLI's, it is not replaced by an estimate.
+    expect(context.session.meta.outputRate).toEqual({ tokensPerSecond: 210, estimated: false, live: true });
+
+    context.finish();
+    await turn;
+    expect(context.session.meta.outputRate).toEqual({ tokensPerSecond: 210, estimated: false, live: false });
+  });
+
+  it('says nothing for a turn in which the CLI measured nothing, instead of guessing', async () => {
+    const context = createSession({ notifications: [OUTPUT_RATE_NOTIFICATION] });
+    const { turn } = await startTurn(context);
+    await stream(context);
+    context.finish();
+    await turn;
+    expect(context.session.meta.outputRate).toBeUndefined();
+  });
+
+  it('estimates from the text, marked as an estimate, for a CLI that does not send it', async () => {
+    const context = createSession();
+    const { turn } = await startTurn(context);
+    await stream(context);
+    expect(context.session.meta.outputRate).toMatchObject({ estimated: true, live: true });
+    context.finish();
+    await turn;
+    expect(context.session.meta.outputRate).toMatchObject({ estimated: true, live: false });
+  });
+
+  it('ignores a figure that arrives when no turn is running', () => {
+    const context = createSession({ notifications: [OUTPUT_RATE_NOTIFICATION] });
+    context.session.handleOutputRate({ tokensPerSecond: 99, estimated: false });
+    expect(context.session.meta.outputRate).toBeUndefined();
+  });
+
+  it('starts the next prompt without the last figure', async () => {
+    const context = createSession({ notifications: [OUTPUT_RATE_NOTIFICATION] });
+    const { turn: first } = await startTurn(context);
+    context.session.handleOutputRate({ tokensPerSecond: 210, estimated: false });
+    context.finish();
+    await first;
+    expect(context.session.meta.outputRate?.live).toBe(false);
+
+    const { turn: second } = await startTurn(context);
+    expect(context.session.meta.outputRate).toBeUndefined();
+    context.finish();
+    await second;
   });
 });

@@ -197,19 +197,23 @@ async function respond(
     response.write(
       `data: ${JSON.stringify({ id: 'c', object: 'chat.completion.chunk', model: 'fixture', ...chunk })}\n\n`,
     );
-  const finish = (reason: string) => {
+  const finish = (reason: string, completionTokens = 5) => {
     send({ choices: [{ index: 0, delta: {}, finish_reason: reason }] });
-    send({ choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } });
+    send({ choices: [], usage: { prompt_tokens: 10, completion_tokens: completionTokens, total_tokens: 10 + completionTokens } });
     response.end('data: [DONE]\n\n');
   };
-  const say = async (reply: string, delayMs = 0) => {
+  const streamText = async (reply: string, delayMs: number) => {
     for (const part of reply.match(/[\s\S]{1,8}/gu) ?? []) {
       send({ choices: [{ index: 0, delta: { role: 'assistant', content: part } }] });
       if (delayMs) await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
-    finish('stop');
   };
-  const callTool = (name: string, args: object) => {
+  /** `completionTokens` is what the provider reports as the output of this call (the CLI divides it by the decode time). */
+  const say = async (reply: string, delayMs = 0, completionTokens?: number) => {
+    await streamText(reply, delayMs);
+    finish('stop', completionTokens);
+  };
+  const callTool = (name: string, args: object, completionTokens?: number) => {
     send({
       choices: [
         {
@@ -228,7 +232,7 @@ async function respond(
         },
       ],
     });
-    finish('tool_calls');
+    finish('tool_calls', completionTokens);
   };
 
   const file = (name: string) => path.join(paths.workspace, name);
@@ -239,6 +243,19 @@ async function respond(
       callTool('edit', { file_path: file('src/date.ts'), old_string: DEMO_OLD, new_string: DEMO_NEW });
     } else {
       await say(DEMO_REPLY, 4);
+    }
+    return;
+  }
+  if (lastUser.includes('DO_STREAM')) {
+    // Two model calls in one turn, like an agent that reads, then answers. The first writes some text and
+    // calls a tool; the second writes a long answer. Output tokens are the characters over four, so the
+    // speed the CLI measures is known: eight characters (two tokens) every 30 ms, about 66 tokens a second.
+    const toolTurns = body.messages.slice(body.messages.findLastIndex((message) => message.role === 'user')).filter((message) => message.role === 'tool').length;
+    if (toolTurns === 0) {
+      await streamText('streaming '.repeat(60), 30);
+      callTool('write', { path: file('streamed.txt'), content: 'streamed\n' }, 150);
+    } else {
+      await say('streaming '.repeat(150), 30, 375);
     }
     return;
   }
@@ -281,9 +298,6 @@ async function respond(
         },
       ],
     });
-  } else if (text.includes('DO_STREAM')) {
-    // About four seconds of steady text: long enough for the speed to be live while it is looked at.
-    await say('streaming '.repeat(150), 30);
   } else if (text.includes('DO_SLOW')) {
     await say('working '.repeat(40), 30);
   } else if (text.includes('DO_THINK')) {
