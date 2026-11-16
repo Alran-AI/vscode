@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0
+## 1.0.0
 
 The first public release. Needs the Alran CLI 0.9.0 or newer.
 
