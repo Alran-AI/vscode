@@ -47,6 +47,8 @@ body.vscode-high-contrast-light {
   --on-ribbon: var(--vscode-button-foreground, #000000);
   --steel-lo: var(--vscode-foreground);
   --steel-hi: var(--vscode-foreground);
+  /* Lines, chevrons and marks use the theme's contrast border; only fills follow the button colour. */
+  --accent: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder, var(--vscode-foreground)));
 }
 
 * {
@@ -1952,7 +1954,7 @@ button.account-line:hover {
   top: 11px;
   font-family: var(--mono);
   font-weight: 700;
-  color: var(--ribbon);
+  color: var(--accent);
 }
 
 .transcript > .message.user:first-child {
@@ -2044,7 +2046,7 @@ button.account-line:hover {
 
 .starter > .codicon,
 .welcome-mark .codicon {
-  color: var(--ribbon);
+  color: var(--accent);
 }
 
 .starter-label {
