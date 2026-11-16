@@ -15,6 +15,7 @@ The first public release. Needs the Alran CLI 0.9.0 or newer.
 ### A look of its own
 
 - **The ribbon.** Alran's mark (two ribbons of brushed steel) is the interface's one colour: silver on a dark theme, graphite on a light one. Primary buttons, the chosen option of a question, the open tab and the counts use it; warnings, errors and success keep the editor's colours, and high-contrast themes keep their own. The mark itself appears on the welcome and sign-in screens, and, while Alran works, its light travels across it instead of a spinner turning.
+- **The marketplace icon** is the same ribbon, flat and in steel on the dark square, so the mark in the extension list is the mark in the editor.
 - **Turns, not boxes.** Your prompt is the heading of its turn, with a hairline between turns; tool calls that follow each other hang on a thin thread.
 - **Figures are set in the editor's mono face** with tabular digits (time, tokens per second, context, `+/−`, counts), so they do not jitter while they change.
 - Softer corners on cards, code and the composer, a brushed highlight on the composer's top edge, a quiet send button while there is nothing to send, and one underline instead of two.
