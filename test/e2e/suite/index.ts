@@ -193,9 +193,22 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       await session.goalCreate('Ship the VS Code extension', 50_000);
       await session.goalPatch({ status: 'paused' });
       await waitFor('background settled', () => session.meta.status === 'idle', 20_000);
+      const previousItems = new Set(session.model.items.map((item) => item.id));
       void api.actions.sendPrompt({ text: 'DO_SLOW now', attachments: [] });
-      await waitFor('streaming', () => session.model.items.at(-1)?.kind === 'assistant');
+      await waitFor(
+        'the DO_SLOW turn to stream',
+        () =>
+          session.meta.status === 'running' &&
+          session.model.items.some(
+            (item) => item.kind === 'assistant' && !previousItems.has(item.id) && item.text.includes('working'),
+          ),
+      );
       await session.enqueue({ text: 'A queued follow-up', attachments: [] });
+      await waitFor(
+        'the follow-up to be admitted to the Runtime queue',
+        () => session.meta.queue.some((item) => item.text === 'A queued follow-up'),
+        10_000,
+      );
       await sleep(300);
       screenshot('06-running');
       await waitFor('queue drained', () => session.meta.queue.length === 0 && session.meta.status === 'idle', 30_000);
@@ -437,7 +450,8 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       await waitFor('failure', () => session.model.items.some((item) => item.kind === 'notice' && item.failure !== undefined), 90_000);
       await waitFor('idle', () => session.meta.status === 'idle');
       const notice = session.model.items.findLast((item) => item.kind === 'notice');
-      assert.equal(notice?.kind === 'notice' && notice.failure?.kind, 'model-restricted');
+      assert.equal(notice?.kind === 'notice' && notice.failure?.kind, 'credits');
+      assert.deepEqual(notice?.kind === 'notice' ? notice.failure?.actions : undefined, ['use-werk', 'switch-model']);
       await vscode.commands.executeCommand('alran.chat.focus');
       await sleep(600);
       screenshot('12-failure-card');
