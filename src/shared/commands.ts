@@ -17,6 +17,7 @@ export const CLIENT_COMMANDS: readonly CommandView[] = [
   { name: 'goal', description: 'Start or manage the current Session Goal', hint: '<objective | pause | resume | edit | clear | budget=>', source: 'client' },
   { name: 'plan', description: 'Switch Plan Mode or view the latest Plan', hint: '[on | off | status | view]', source: 'client' },
   { name: 'review', description: 'Review staged, unstaged, and untracked local changes', source: 'client' },
+  { name: 'ci', description: 'Set up and manage the CI Fixer for this repository', hint: '[init | status | doctor | disable]', source: 'client' },
   { name: 'init', description: 'Analyze the codebase and generate AGENTS.md', source: 'client' },
   { name: 'retry', description: 'Resend the last message after a failed response', source: 'client' },
   { name: 'steer', description: 'Steer current work without interrupting it', hint: '<message>', source: 'client' },

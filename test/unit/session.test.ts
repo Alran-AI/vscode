@@ -1,17 +1,60 @@
 import type * as acp from '@agentclientprotocol/sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { OUTPUT_RATE_NOTIFICATION, type AlranAgent } from '../../src/acp/agent';
+import { OUTPUT_RATE_NOTIFICATION, type AlranAgent, type RuntimeQueueItem } from '../../src/acp/agent';
 import { SessionController } from '../../src/core/session';
 
-function createSession(options: { notifications?: readonly string[] } = {}) {
+function createSession(options: {
+  notifications?: readonly string[];
+  runtimeQueue?: boolean;
+  queueItems?: RuntimeQueueItem[];
+} = {}) {
   const loadSession = vi.fn().mockResolvedValue({});
+  const queueItems = [...(options.queueItems ?? [])];
+  const queueMethods = [
+    'alran/session/queue/list',
+    'alran/session/queue/enqueue',
+    'alran/session/queue/update',
+    'alran/session/queue/delete',
+    'alran/session/queue/steer',
+  ];
+  const listQueued = vi.fn(async () => ({ items: [...queueItems] }));
+  const enqueueQueued = vi.fn(async (sessionId: string, text: string) => {
+    const item = { itemId: `q${String(queueItems.length + 1)}`, sessionId, status: 'queued', content: text };
+    queueItems.push(item);
+    return { itemId: item.itemId, status: item.status };
+  });
+  const updateQueued = vi.fn(async (sessionId: string, itemId: string, text: string) => {
+    const index = queueItems.findIndex((item) => item.itemId === itemId && item.sessionId === sessionId);
+    if (index < 0) return { item: null };
+    const item = { ...queueItems[index]!, content: text };
+    queueItems[index] = item;
+    return { item };
+  });
+  const deleteQueued = vi.fn(async (sessionId: string, itemId: string) => {
+    const index = queueItems.findIndex((item) => item.itemId === itemId && item.sessionId === sessionId);
+    if (index < 0) return { item: null };
+    const [item] = queueItems.splice(index, 1);
+    return { item: item ?? null };
+  });
+  const steerQueued = vi.fn(async (sessionId: string, itemId: string) => {
+    const index = queueItems.findIndex((item) => item.itemId === itemId && item.sessionId === sessionId);
+    if (index >= 0) queueItems[index] = { ...queueItems[index]!, status: 'running' };
+    return { queueItemId: itemId, turnId: 'turn-1' };
+  });
   let finishPrompt: (value: { stopReason: string }) => void = () => undefined;
+  const prompt = vi.fn(() => new Promise((resolve) => (finishPrompt = resolve)));
   const agent = {
-    extensionMethods: new Set<string>(),
+    extensionMethods: new Set<string>(options.runtimeQueue ? queueMethods : []),
     extensionNotifications: new Set<string>(options.notifications ?? []),
+    supportsRuntimeQueue: options.runtimeQueue === true,
+    listQueued,
+    enqueueQueued,
+    updateQueued,
+    deleteQueued,
+    steerQueued,
     loadSession,
-    prompt: vi.fn(() => new Promise((resolve) => (finishPrompt = resolve))),
+    prompt,
   } as unknown as AlranAgent;
   const session = new SessionController('s1', '/work', {
     agent: () => agent,
@@ -29,8 +72,143 @@ function createSession(options: { notifications?: readonly string[] } = {}) {
     },
   });
   session.markReady();
-  return { session, loadSession, finish: () => finishPrompt({ stopReason: 'end_turn' }) };
+  return {
+    session,
+    agent,
+    prompt,
+    loadSession,
+    listQueued,
+    enqueueQueued,
+    updateQueued,
+    deleteQueued,
+    steerQueued,
+    finish: () => finishPrompt({ stopReason: 'end_turn' }),
+  };
 }
+
+describe('Runtime queue integration', () => {
+  const item: RuntimeQueueItem = {
+    itemId: 'queue-1',
+    sessionId: 's1',
+    status: 'queued',
+    content: 'persist this prompt',
+    attachments: [{}],
+  };
+
+  it('hydrates the durable queue on attach and clears it on an empty update', async () => {
+    const context = createSession({ runtimeQueue: true, queueItems: [item] });
+    await context.session.refreshExtensions();
+
+    expect(context.listQueued).toHaveBeenCalledWith('s1');
+    expect(context.session.meta.queue).toEqual([
+      { id: 'runtime:queue-1', text: 'persist this prompt', attachmentCount: 1 },
+    ]);
+
+    context.session.handleRuntimeQueue([]);
+    expect(context.session.meta.queue).toEqual([]);
+  });
+
+  it('uses the Runtime queue for text and keeps attachment prompts in the local queue', async () => {
+    const context = createSession({ runtimeQueue: true });
+
+    await context.session.enqueue({ text: 'queued in Runtime', attachments: [] });
+    await context.session.enqueue({
+      text: 'keep this attachment',
+      attachments: [{ kind: 'text', id: 'a1', label: 'context', text: 'local context' }],
+    });
+
+    expect(context.enqueueQueued).toHaveBeenCalledWith('s1', 'queued in Runtime');
+    expect(context.session.meta.queue).toEqual([
+      { id: 'runtime:q1', text: 'queued in Runtime', attachmentCount: 0 },
+      { id: expect.any(String), text: 'keep this attachment', attachmentCount: 1 },
+    ]);
+  });
+
+  it('edits and deletes Runtime-owned entries through ACP', async () => {
+    const context = createSession({ runtimeQueue: true, queueItems: [item] });
+    await context.session.refreshExtensions();
+
+    await context.session.editQueued('runtime:queue-1', 'updated prompt');
+    expect(context.updateQueued).toHaveBeenCalledWith('s1', 'queue-1', 'updated prompt');
+    expect(context.session.meta.queue[0]?.text).toBe('updated prompt');
+
+    await context.session.deleteQueued('runtime:queue-1');
+    expect(context.deleteQueued).toHaveBeenCalledWith('s1', 'queue-1');
+    expect(context.session.meta.queue).toEqual([]);
+  });
+
+  it('clears only manageable pending Runtime queue entries', async () => {
+    const context = createSession({
+      runtimeQueue: true,
+      queueItems: [
+        item,
+        { ...item, itemId: 'running', status: 'running' },
+        { ...item, itemId: 'goal', source: 'thread-goal' },
+      ],
+    });
+    await context.session.refreshExtensions();
+
+    await context.session.clearQueue();
+
+    expect(context.deleteQueued).toHaveBeenCalledTimes(1);
+    expect(context.deleteQueued).toHaveBeenCalledWith('s1', 'queue-1');
+    expect(context.session.meta.queue).toEqual([]);
+  });
+
+  it('sends a Runtime-owned queue entry immediately through ACP steer', async () => {
+    const context = createSession({ runtimeQueue: true, queueItems: [item] });
+    await context.session.refreshExtensions();
+
+    await context.session.sendQueuedNow('runtime:queue-1');
+
+    expect(context.steerQueued).toHaveBeenCalledWith('s1', 'queue-1');
+    expect(context.session.meta.queue).toEqual([]);
+    context.session.dispose();
+  });
+
+  it('keeps new text behind local attachment prompts to preserve queue ordering', async () => {
+    const context = createSession({ runtimeQueue: true });
+    await context.session.enqueue({
+      text: 'first, with attachment',
+      attachments: [{ kind: 'text', id: 'a1', label: 'context', text: 'local context' }],
+    });
+    await context.session.enqueue({ text: 'second, text only', attachments: [] });
+
+    expect(context.enqueueQueued).not.toHaveBeenCalled();
+    expect(context.session.meta.queue.map((entry) => entry.text)).toEqual([
+      'first, with attachment',
+      'second, text only',
+    ]);
+  });
+
+  it('runs local attachment prompts after Runtime-owned queue turns finish', async () => {
+    const context = createSession({
+      runtimeQueue: true,
+      queueItems: [{ ...item, status: 'running' }],
+    });
+    await context.session.refreshExtensions();
+    await context.session.enqueue({
+      text: 'local attachment prompt',
+      attachments: [{ kind: 'text', id: 'a1', label: 'context', text: 'local context' }],
+    });
+
+    expect(context.prompt).not.toHaveBeenCalled();
+    context.session.handleRuntimeQueue([{ ...item, status: 'completed' }]);
+    expect(context.prompt).toHaveBeenCalledTimes(1);
+
+    context.finish();
+    context.session.dispose();
+  });
+
+  it('retains the local queue fallback when the CLI does not advertise Runtime queue methods', async () => {
+    const context = createSession();
+    await context.session.enqueue({ text: 'legacy queue', attachments: [] });
+
+    expect(context.enqueueQueued).not.toHaveBeenCalled();
+    expect(context.session.meta.queue).toMatchObject([{ text: 'legacy queue', attachmentCount: 0 }]);
+    expect(context.session.meta.queue[0]?.id).not.toMatch(/^runtime:/u);
+  });
+});
 
 const info = (at: number): acp.SessionUpdate => ({
   sessionUpdate: 'session_info_update',

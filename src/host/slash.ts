@@ -34,6 +34,7 @@ export class SlashRouter {
       goal: (args) => a.goal(args),
       plan: (args) => a.plan(args),
       review: () => a.review(),
+      ci: tui('ci'),
       retry: () => a.retry(),
       stop: () => a.cancel(),
       steer: async (text) => {
@@ -44,7 +45,7 @@ export class SlashRouter {
       },
       queue: async (text) => {
         if (!text) session()?.pushNotice('info', 'Queued messages are listed above the composer.');
-        else if (session()?.busy) session()?.enqueue({ text, attachments: [] });
+        else if (session()?.busy) await session()?.enqueue({ text, attachments: [] });
         else await session()?.submit({ text, attachments: [] });
       },
       permission: (args) => a.permissionCommand(args),

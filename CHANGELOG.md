@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0
+
+The VS Code extension now uses Alran Runtime's durable ACP queue for text-only messages. It synchronizes queue state on attach and as the Runtime changes it, and supports editing, deleting and sending queued messages immediately. Older CLIs retain the local queue; prompts with file or image attachments also stay in the local queue because ACP's queue API accepts text only.
+
+### Changed
+
+- Queue items created from the editor or `/queue` are stored by Alran Runtime when the CLI advertises the complete queue API. They survive closing the editor and remain synchronized with other Alran clients.
+- Queue edit, remove, clear and send-now actions now operate on Runtime-owned items as well as local fallback entries.
+- TUI command parity fixtures can be refreshed from any Alran Code checkout with `ALRAN_CODE_ROOT`, and the committed snapshot is updated against CLI 1.2.2.
+
 ## 1.0.1
 
 Claude runs on your own Anthropic key. Works with the Alran CLI 0.9.0 or newer; the new statuses and sentences come with **Alran CLI 1.0.1** (`npm install -g alran` or **Alran: Update Alran CLI**) — an older CLI still works and says "needs purchased credit" where the new one says what Claude really needs.

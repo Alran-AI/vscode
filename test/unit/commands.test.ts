@@ -56,7 +56,7 @@ describe('TUI parity', () => {
     expect(missing).toEqual([]);
   });
 
-  it.skipIf(!hasSibling())('the snapshot matches the alran-code checkout next to this repository', () => {
+  it.skipIf(!hasSibling())('the snapshot matches the configured Alran Code checkout', () => {
     const snapshot = JSON.parse(read('test/fixtures/tui-commands.json')) as Record<string, unknown>;
     expect(snapshot).toEqual(readTuiCommands());
   });

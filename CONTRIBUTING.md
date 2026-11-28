@@ -7,7 +7,7 @@ pnpm install
 pnpm build              # dist/extension.cjs and dist/webview
 pnpm typecheck
 pnpm test:unit
-pnpm sync:tui           # refresh test/fixtures/tui-commands.json from ../alran-code
+pnpm sync:tui           # refresh test/fixtures/tui-commands.json (or set ALRAN_CODE_ROOT)
 pnpm test:integration   # real alran + scripted model and Ottili Platform; set ALRAN_TEST_CLI or keep ../alran-code built
 xvfb-run -a pnpm test:e2e   # real VS Code + real alran + scripted model and Ottili Platform
 pnpm package            # alran-vscode-<version>.vsix
@@ -16,6 +16,8 @@ pnpm package            # alran-vscode-<version>.vsix
 Press `F5` to launch an Extension Development Host. `src/shared` and `src/core` have no VS Code imports, so the protocol and account layers are tested against the real CLI in plain Node.
 
 The end-to-end suite takes screenshots when `ALRAN_E2E_SCREENSHOT_DIR` is set, and runs a subset when `ALRAN_E2E_ONLY` holds a regular expression of step names. `ALRAN_TEST_VSCODE` picks the VS Code version (default: stable). `ALRAN_TEST_CLI` points the integration and end-to-end tests at a CLI, for example the published package (`npm install alran` into a scratch folder) instead of a build of `../alran-code`.
+
+Set `ALRAN_CODE_ROOT=/path/to/alran-code` to sync and verify TUI command parity against a checkout that is not beside this repository.
 
 Every test uses a tiny offline store (`test/fixtures/store`, built from `test/fixtures/store-src`, see its README), so no test asks the network for one.
 

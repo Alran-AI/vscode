@@ -9,7 +9,7 @@ The agent is always the Alran Code runtime (`alran acp`). This page records how 
 | **Native** | Implemented in the extension with the editor's own UI |
 | **TUI** | ACP offers no equivalent, so the current Session opens in the real TUI in an integrated terminal and reattaches when the terminal closes |
 
-`test/unit/commands.test.ts` fails if a public command of the TUI has no route here. It reads a snapshot of the TUI's commands, `test/fixtures/tui-commands.json`; run `pnpm sync:tui` with an `alran-code` checkout next to this repository to refresh it (the test also checks the snapshot against that checkout when it is there).
+`test/unit/commands.test.ts` fails if a public command of the TUI has no route here. It reads a snapshot of the TUI's commands, `test/fixtures/tui-commands.json`; run `pnpm sync:tui` with an `alran-code` checkout next to this repository, or set `ALRAN_CODE_ROOT=/path/to/alran-code` (the test also checks the snapshot against that checkout when it is there).
 
 ## Slash commands
 
@@ -25,8 +25,9 @@ The agent is always the Alran Code runtime (`alran acp`). This page records how 
 | `/plan` | ACP | Plan toggle; `on`, `off`, `status`, `view` |
 | `/review` | ACP | Sends the TUI's review prompt |
 | `/init` | ACP | Runs the runtime `init` Skill |
+| `/ci` | TUI | Opens the interactive CI Fixer setup and management flow |
 | `/steer` | ACP | Enter during a turn, or `/steer <message>` |
-| `/queue` | Native | Client queue, see below |
+| `/queue` | ACP, Native | Persistent Runtime queue for text-only messages; local fallback for attachments and older CLIs |
 | `/stop` | ACP | Stop button or `Esc` |
 | `/permission` | ACP | Composer, status bar; `status`, `ask`, `auto`, `full` |
 | `/retry` | Native | Retry button, or resends the last message |
@@ -95,7 +96,7 @@ Change tracking with diff and revert, proposed-edit preview in the diff editor, 
 
 These follow from what ACP exposes today. Fixing them belongs in Alran's ACP layer (`packages/tui/src/acp`).
 
-**The queue lives in the extension.** The runtime queue (`alran/session/queue/*`) works, but ACP does not stream the turns it runs, so their output would stay invisible. The extension holds queued messages and sends each as a normal prompt. This also lets queued messages carry images. Queued messages are lost when the window closes.
+**Runtime-queued turns appear by replay.** Current CLIs expose the durable queue through ACP (`queue/list`, `enqueue`, `update`, `delete`, and `steer`) and stream queue changes to the extension. Text-only queued messages therefore survive closing the editor and stay in sync with other Alran clients. ACP's queue API does not accept composer attachments: messages with files or images use the extension's local queue and are not persisted across a window close. A Runtime-queued turn is not a normal ACP prompt, so its transcript is made visible by replay rather than token-by-token streaming.
 
 **Detached turns appear by replay.** Goal auto-continuation and questionnaire continuations run without a `session/prompt`, so ACP does not stream them. The extension shows "working in the background" and replays the persisted history as they progress, so output arrives in steps rather than token by token.
 

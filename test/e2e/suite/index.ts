@@ -195,7 +195,7 @@ const steps: Array<[string, (api: AlranExtensionApi) => Promise<void>]> = [
       await waitFor('background settled', () => session.meta.status === 'idle', 20_000);
       void api.actions.sendPrompt({ text: 'DO_SLOW now', attachments: [] });
       await waitFor('streaming', () => session.model.items.at(-1)?.kind === 'assistant');
-      session.enqueue({ text: 'A queued follow-up', attachments: [] });
+      await session.enqueue({ text: 'A queued follow-up', attachments: [] });
       await sleep(300);
       screenshot('06-running');
       await waitFor('queue drained', () => session.meta.queue.length === 0 && session.meta.status === 'idle', 30_000);

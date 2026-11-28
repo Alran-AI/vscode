@@ -82,12 +82,18 @@ const RESYNC_INITIAL_DELAY_MS = 1_200;
 const RESYNC_FINAL_DELAY_MS = 400;
 const RESYNC_MAX_DELAY_MS = 20_000;
 const RESYNC_MAX_ATTEMPTS = 200;
+const RUNTIME_QUEUE_ID_PREFIX = 'runtime:';
 
 /** Conversation state and turn lifecycle of one open ACP Session. */
 export class SessionController {
   readonly model: SessionModel;
   readonly changes = new ChangeTracker();
+  /** Prompts with local attachments, or queued by older CLIs that do not expose Runtime queue APIs. */
   private readonly queue: QueuedPrompt[] = [];
+  /** Durable, cross-client queue entries owned by Alran Runtime. */
+  private runtimeQueue: RuntimeQueueItem[] = [];
+  private runtimeQueueTurnActive = false;
+  private runtimeQueueRevision = 0;
   private readonly interactions = new Map<string, PendingInteraction>();
   private promptActive = false;
   private cancelling = false;
@@ -217,16 +223,19 @@ export class SessionController {
 
   async refreshExtensions(): Promise<void> {
     const agent = this.services.agent();
+    const queueRevision = this.runtimeQueueRevision;
     const methods = agent.extensionMethods;
     this.meta.goalsEnabled = methods.has('alran/session/goal/get');
-    const [goal, delegation] = await Promise.all([
+    const [goal, delegation, queue] = await Promise.all([
       this.meta.goalsEnabled ? agent.getGoal(this.id).catch(() => undefined) : undefined,
       methods.has('alran/session/delegation/get')
         ? agent.getDelegation(this.id).catch(() => undefined)
         : undefined,
+      agent.supportsRuntimeQueue ? agent.listQueued(this.id).catch(() => undefined) : undefined,
     ]);
     if (goal) this.meta.goal = toGoalView(goal.goal);
     if (delegation) this.meta.delegation = toDelegationViews(delegation.snapshot);
+    if (queue && queueRevision === this.runtimeQueueRevision) this.handleRuntimeQueue(queue.items);
     this.emitMeta();
   }
 
@@ -291,9 +300,35 @@ export class SessionController {
   }
 
   handleRuntimeQueue(items: readonly RuntimeQueueItem[]): void {
-    if (items.length === 0) return;
-    if (this.promptActive) this.detachedTurnExpected = true;
-    else this.startDetachedSync();
+    if (!this.services.agent().supportsRuntimeQueue) return;
+    const wasRunning = this.runtimeQueueTurnActive;
+    const hasPending = items.some((item) => item.status === 'queued' || item.status === 'pending');
+    const hasRunning = items.some((item) => item.status === 'running' || item.status === 'processing');
+    this.syncRuntimeQueue(items);
+    // A queued item admitted during this prompt will execute after it. A running item
+    // observed while idle is a Runtime-owned turn whose transcript must be replayed.
+    if (this.promptActive && hasPending) this.detachedTurnExpected = true;
+    else if (!this.promptActive && hasRunning && !this.background) this.startDetachedSync();
+    else if (!this.promptActive && wasRunning && !hasRunning && !hasPending && this.background) {
+      this.finishDetachedTurn();
+    }
+  }
+
+  private syncRuntimeQueue(items: readonly RuntimeQueueItem[]): void {
+    this.runtimeQueueRevision += 1;
+    this.runtimeQueue = [...items];
+    this.runtimeQueueTurnActive = items.some(
+      (item) => item.status === 'running' || item.status === 'processing',
+    );
+    this.syncQueueView();
+  }
+
+  private async refreshRuntimeQueue(): Promise<void> {
+    const agent = this.services.agent();
+    if (!agent.supportsRuntimeQueue) return;
+    const queueRevision = this.runtimeQueueRevision;
+    const result = await agent.listQueued(this.id);
+    if (queueRevision === this.runtimeQueueRevision) this.syncRuntimeQueue(result.items);
   }
 
   handleGoal(goal: unknown): void {
@@ -331,6 +366,7 @@ export class SessionController {
     this.background = false;
     this.refreshStatus();
     this.scheduleResync(RESYNC_FINAL_DELAY_MS);
+    this.drainQueue(undefined, undefined);
   }
 
   private scheduleResync(delayMs: number): void {
@@ -372,13 +408,39 @@ export class SessionController {
       const preference = this.services.enterWhileRunning();
       const useSteer = options.alternate ? preference === 'queue' : preference === 'steer';
       if (useSteer && (await this.steer(input))) return;
-      this.enqueue(input);
+      await this.enqueue(input);
       return;
     }
     await this.runPrompt(input);
   }
 
-  enqueue(input: PromptInput): void {
+  async enqueue(input: PromptInput): Promise<void> {
+    const agent = this.services.agent();
+    if (
+      agent.supportsRuntimeQueue &&
+      this.queue.length === 0 &&
+      input.attachments.length === 0 &&
+      input.text.trim()
+    ) {
+      try {
+        await agent.enqueueQueued(this.id, input.text);
+      } catch (error) {
+        // Do not fall back to a local enqueue after an ambiguous RPC failure: the Runtime
+        // may have accepted the request even if its acknowledgement was lost.
+        this.services.listener.log(`Runtime queue enqueue failed: ${errorMessage(error)}`);
+        this.pushNotice('warning', `Could not confirm the Runtime queue request: ${errorMessage(error)}`);
+        await this.refreshRuntimeQueue().catch(() => undefined);
+        return;
+      }
+      if (this.promptActive) this.detachedTurnExpected = true;
+      try {
+        await this.refreshRuntimeQueue();
+      } catch (error) {
+        this.services.listener.log(`Runtime queue refresh failed: ${errorMessage(error)}`);
+        this.pushNotice('warning', `The message was queued, but the queue view could not refresh: ${errorMessage(error)}`);
+      }
+      return;
+    }
     this.queue.push({ id: randomUUID(), input });
     this.syncQueueView();
   }
@@ -525,31 +587,105 @@ export class SessionController {
   private drainQueue(stopReason: string | undefined, failure: unknown): void {
     // A stop or failure leaves the queue in place for the user to decide.
     if (failure !== undefined || stopReason === 'cancelled' || this.promptActive) return;
+    const runtimeQueueActive = this.runtimeQueue.some(
+      (item) =>
+        item.status === 'queued' ||
+        item.status === 'pending' ||
+        item.status === 'paused' ||
+        item.status === 'running' ||
+        item.status === 'processing',
+    );
+    if (runtimeQueueActive) {
+      // Keep local attachment prompts behind Runtime-owned messages. Otherwise both queues
+      // could start turns for the same session at once after the current prompt settles.
+      if (
+        !this.background &&
+        this.runtimeQueue.some(
+          (item) =>
+            item.status === 'queued' ||
+            item.status === 'pending' ||
+            item.status === 'running' ||
+            item.status === 'processing',
+        )
+      ) {
+        this.startDetachedSync();
+      }
+      return;
+    }
     const next = this.queue.shift();
     if (!next) return;
     this.syncQueueView();
     void this.runPrompt(next.input);
   }
 
-  deleteQueued(id: string): void {
+  async deleteQueued(id: string): Promise<void> {
+    if (id.startsWith(RUNTIME_QUEUE_ID_PREFIX)) {
+      const itemId = id.slice(RUNTIME_QUEUE_ID_PREFIX.length);
+      try {
+        await this.services.agent().deleteQueued(this.id, itemId);
+        await this.refreshRuntimeQueue();
+      } catch (error) {
+        this.pushNotice('warning', `Could not remove the queued message: ${errorMessage(error)}`);
+        await this.refreshRuntimeQueue().catch(() => undefined);
+      }
+      return;
+    }
     const index = this.queue.findIndex((item) => item.id === id);
     if (index >= 0) this.queue.splice(index, 1);
     this.syncQueueView();
   }
 
-  editQueued(id: string, text: string): void {
+  async editQueued(id: string, text: string): Promise<void> {
+    if (id.startsWith(RUNTIME_QUEUE_ID_PREFIX)) {
+      const itemId = id.slice(RUNTIME_QUEUE_ID_PREFIX.length);
+      try {
+        await this.services.agent().updateQueued(this.id, itemId, text);
+        await this.refreshRuntimeQueue();
+      } catch (error) {
+        this.pushNotice('warning', `Could not update the queued message: ${errorMessage(error)}`);
+        await this.refreshRuntimeQueue().catch(() => undefined);
+      }
+      return;
+    }
     const item = this.queue.find((candidate) => candidate.id === id);
     if (item) item.input = { ...item.input, text };
     this.syncQueueView();
   }
 
-  clearQueue(): void {
+  async clearQueue(): Promise<void> {
     this.queue.length = 0;
     this.syncQueueView();
+    const agent = this.services.agent();
+    if (!agent.supportsRuntimeQueue || this.runtimeQueue.length === 0) return;
+    try {
+      const manageableItems = this.runtimeQueue.filter(
+        (item) =>
+          (item.status === 'queued' || item.status === 'pending' || item.status === 'paused') &&
+          item.source !== 'thread-goal',
+      );
+      await Promise.all(manageableItems.map((item) => agent.deleteQueued(this.id, item.itemId)));
+      await this.refreshRuntimeQueue();
+    } catch (error) {
+      this.pushNotice('warning', `Could not clear the Runtime queue: ${errorMessage(error)}`);
+      await this.refreshRuntimeQueue().catch(() => undefined);
+    }
   }
 
   /** Delivers a queued message now: into the running turn, or as the next turn. */
   async sendQueuedNow(id: string): Promise<void> {
+    if (id.startsWith(RUNTIME_QUEUE_ID_PREFIX)) {
+      const itemId = id.slice(RUNTIME_QUEUE_ID_PREFIX.length);
+      try {
+        await this.services.agent().steerQueued(this.id, itemId);
+        if (this.promptActive) this.detachedTurnExpected = true;
+        else this.startDetachedSync();
+        await this.refreshRuntimeQueue();
+      } catch (error) {
+        this.pushNotice('warning', `Could not send the queued message now: ${errorMessage(error)}`);
+        await this.refreshRuntimeQueue().catch(() => undefined);
+      }
+      return;
+    }
     const index = this.queue.findIndex((item) => item.id === id);
     const item = this.queue[index];
     if (!item) return;
@@ -560,11 +696,29 @@ export class SessionController {
   }
 
   private syncQueueView(): void {
-    this.meta.queue = this.queue.map((item) => ({
+    const runtimeItems = this.runtimeQueue
+      .filter(
+        (item) =>
+          (item.status === 'queued' || item.status === 'pending' || item.status === 'paused') &&
+          item.source !== 'thread-goal',
+      )
+      .map((item) => ({
+        id: `${RUNTIME_QUEUE_ID_PREFIX}${item.itemId}`,
+        text:
+          item.content?.trim() ||
+          (item.reviewRequest?.scope === 'local_changes'
+            ? 'Review local changes'
+            : item.source
+              ? `Queued via ${item.source}`
+              : 'Queued task'),
+        attachmentCount: item.attachments?.length ?? 0,
+      }));
+    const localItems = this.queue.map((item) => ({
       id: item.id,
       text: item.input.text,
       attachmentCount: item.input.attachments.length,
     }));
+    this.meta.queue = [...runtimeItems, ...localItems];
     this.emitMeta();
   }
 
