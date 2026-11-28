@@ -3,7 +3,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-export const SIBLING = path.resolve(import.meta.dirname, '..', '..', 'alran-code');
+export const SIBLING = process.env.ALRAN_CODE_ROOT?.trim()
+  ? path.resolve(process.env.ALRAN_CODE_ROOT)
+  : path.resolve(import.meta.dirname, '..', '..', 'alran-code');
 
 export function hasSibling() {
   return existsSync(path.join(SIBLING, 'packages', 'tui', 'src', 'tui', 'commands', 'catalog.ts'));

@@ -485,16 +485,16 @@ export class ChatHub implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!session) return;
     switch (operation.op) {
       case 'delete':
-        session.deleteQueued(operation.id);
+        await session.deleteQueued(operation.id);
         break;
       case 'edit':
-        session.editQueued(operation.id, operation.text);
+        await session.editQueued(operation.id, operation.text);
         break;
       case 'steer':
         await session.sendQueuedNow(operation.id);
         break;
       case 'clear':
-        session.clearQueue();
+        await session.clearQueue();
         break;
     }
   }

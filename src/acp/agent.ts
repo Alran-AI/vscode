@@ -65,8 +65,11 @@ export interface RuntimeQueueItem {
   readonly itemId: string;
   readonly sessionId: string;
   readonly status: string;
-  readonly source: string;
-  readonly content: string;
+  readonly source?: string;
+  readonly reviewRequest?: { readonly scope: 'local_changes' };
+  readonly content?: string;
+  readonly attachments?: readonly unknown[];
+  readonly failedReason?: string;
 }
 
 export interface DelegatedAgent {
@@ -128,6 +131,18 @@ export class AlranAgent {
       | { readonly methods?: readonly string[] }
       | undefined;
     return new Set(raw?.methods ?? []);
+  }
+
+  /** The durable Runtime queue is available only when the complete management API is advertised. */
+  get supportsRuntimeQueue(): boolean {
+    const methods = this.extensionMethods;
+    return [
+      'alran/session/queue/list',
+      'alran/session/queue/enqueue',
+      'alran/session/queue/update',
+      'alran/session/queue/delete',
+      'alran/session/queue/steer',
+    ].every((method) => methods.has(method));
   }
 
   /** The notifications this CLI says it sends (an older CLI sends fewer). */
@@ -362,6 +377,30 @@ export class AlranAgent {
       text,
       ...(clientRequestId ? { clientRequestId } : {}),
     });
+  }
+
+  listQueued(sessionId: string): Promise<{ items: RuntimeQueueItem[] }> {
+    return this.agent.request('alran/session/queue/list', { sessionId });
+  }
+
+  enqueueQueued(sessionId: string, text: string): Promise<{ itemId: string; status?: string }> {
+    return this.agent.request('alran/session/queue/enqueue', { sessionId, text });
+  }
+
+  updateQueued(
+    sessionId: string,
+    itemId: string,
+    text: string,
+  ): Promise<{ item: RuntimeQueueItem | null }> {
+    return this.agent.request('alran/session/queue/update', { sessionId, itemId, text });
+  }
+
+  deleteQueued(sessionId: string, itemId: string): Promise<{ item: RuntimeQueueItem | null }> {
+    return this.agent.request('alran/session/queue/delete', { sessionId, itemId });
+  }
+
+  steerQueued(sessionId: string, itemId: string): Promise<{ queueItemId: string; turnId: string }> {
+    return this.agent.request('alran/session/queue/steer', { sessionId, itemId });
   }
 
   getGoal(sessionId: string): Promise<{ goal: unknown }> {
